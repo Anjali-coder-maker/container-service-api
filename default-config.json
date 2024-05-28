@@ -1,0 +1,22 @@
+{
+    "services": {
+        "cups": {
+            "enabled": true,
+            "exec_start": "/usr/bin/podman run --name cups-service-backend -p 8634:631 docker.io/anjali0/cups:latest",
+            "exec_stop": "/usr/bin/podman stop -t 10 cups-service-backend",
+            "exec_stop_post": "/usr/bin/podman rm -f cups-service-backend"
+        },
+        "cron": {
+            "enabled": true,
+            "exec_start": "/usr/bin/podman run --name cron -v /etc/cron.daily:/etc/cron.daily -v /etc/cron.weekly:/etc/cron.weekly -v /etc/cron.monthly:/etc/cron.monthly docker.io/anjali0/cron:latest",
+            "exec_stop": "/usr/bin/podman stop -t 10 cron",
+            "exec_stop_post": "/usr/bin/podman rm -f cron"
+        }
+    }
+}
+
+
+
+
+
+

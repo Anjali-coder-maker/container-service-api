@@ -30,6 +30,11 @@ func InitializeServices() {
 
 		log.Printf("Processing service: %s\n", imageName)
 
+		// Check and disable existing service if running
+		if checkAndDisableExistingService(imageName) {
+			log.Printf("Existing service %s found and disabled\n", imageName)
+		}
+
 		// Perform each step for the service
 		pullImage(imageName)
 		tagImage(imageName)
@@ -46,6 +51,39 @@ func performLogin() utils.CommandResponse {
 	return utils.ExecuteCommand("podman", "login", registry, "-u", username, "-p", password)
 }
 
+// ......
+func checkAndDisableExistingService(imageName string) bool {
+	serviceFileName := fmt.Sprintf("%s.service", imageName)
+
+	// Check if the service is active
+	checkResult := utils.ExecuteCommand("sudo", "systemctl", "is-active", "--quiet", serviceFileName)
+	if checkResult.Error == "" {
+		// Service is active, disable it
+		stopResult := utils.ExecuteCommand("sudo", "systemctl", "stop", serviceFileName)
+		if stopResult.Error != "" {
+			log.Printf("Failed to stop service %s: %s\n", serviceFileName, stopResult.Error)
+			return false
+		}
+
+		disableResult := utils.ExecuteCommand("sudo", "systemctl", "disable", serviceFileName)
+		if disableResult.Error != "" {
+			log.Printf("Failed to disable service %s: %s\n", serviceFileName, disableResult.Error)
+			return false
+		}
+
+		daemonReloadResult := utils.ExecuteCommand("sudo", "systemctl", "daemon-reload")
+		if daemonReloadResult.Error != "" {
+			log.Printf("Failed to reload daemon after disabling service %s: %s\n", serviceFileName, daemonReloadResult.Error)
+			return false
+		}
+
+		return true
+	}
+	// Service is not active or does not exist
+	return false
+}
+
+// ......
 func pullImage(imageName string) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8000/pull/%s", imageName), nil)
 	if err != nil {

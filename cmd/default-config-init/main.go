@@ -13,9 +13,13 @@ import (
 
 func main() {
 	// Initialize services on startup
+	log.Println("Starting configuration loader...")
+
 	go func() {
 		services.InitializeServices()
 	}()
+
+	log.Println("Configuration applied successfully.")
 
 	router := mux.NewRouter()
 	router.HandleFunc("/login", handlers.Login).Methods("POST")

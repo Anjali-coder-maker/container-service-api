@@ -1,0 +1,369 @@
+// CommandResponse is the structure of the response for command execution
+// type CommandResponse struct {
+// 	Output string `json:"output"`
+// 	Error  string `json:"error,omitempty"`
+// }
+
+// // ServiceConfig represents the configuration for a service
+// type ServiceConfig struct {
+// 	Enabled      bool   `json:"enabled"`
+// 	ExecStart    string `json:"exec_start"`
+// 	ExecStop     string `json:"exec_stop"`
+// 	ExecStopPost string `json:"exec_stop_post"`
+// }
+
+// // Config represents the configuration file structure
+// type Config struct {
+// 	Services map[string]ServiceConfig `json:"services"`
+// }
+
+// ExecuteCommand runs a command and returns the output
+// func ExecuteCommand(command string, args ...string) CommandResponse {
+// 	cmd := exec.Command(command, args...)
+// 	output, err := cmd.CombinedOutput()
+// 	if err != nil {
+// 		return CommandResponse{Output: string(output), Error: err.Error()}
+// 	}
+// 	return CommandResponse{Output: string(output)}
+// }
+
+// // LoadConfiguration loads the default and user configurations
+// func LoadConfiguration() (Config, error) {
+// 	var config Config
+
+// 	// Load default configuration
+// 	defaultConfigFile, err := os.ReadFile("default-config.json")
+// 	if err != nil {
+// 		return config, err
+// 	}
+// 	if err := json.Unmarshal(defaultConfigFile, &config); err != nil {
+// 		return config, err
+// 	}
+
+// 	// User configuration loading and merging can be implemented here if needed
+
+// 	return config, nil
+// }
+
+// // performLogin contains the core logic for logging into a registry
+// func performLogin() CommandResponse {
+// 	username := "anjali0"
+// 	password := "Anjali@123"
+// 	registry := "docker.io"
+// 	return ExecuteCommand("podman", "login", registry, "-u", username, "-p", password)
+// }
+
+// // Login handles logging into a registry
+// func Login(w http.ResponseWriter, r *http.Request) {
+// 	result := performLogin()
+// 	json.NewEncoder(w).Encode(result)
+// }
+
+// //........
+
+// // PullImage handles pulling an image from a registry based on the configuration file
+// func PullImage(w http.ResponseWriter, r *http.Request) {
+// 	// Ensure login before pulling the image
+// 	loginResult := performLogin()
+// 	if loginResult.Error != "" {
+// 		json.NewEncoder(w).Encode(loginResult)
+// 		return
+// 	}
+
+// 	config, err := LoadConfiguration()
+// 	if err != nil {
+// 		json.NewEncoder(w).Encode(CommandResponse{Error: err.Error()})
+// 		return
+// 	}
+
+// 	vars := mux.Vars(r)
+// 	imageName := vars["image"]
+
+// 	serviceConfig, exists := config.Services[imageName]
+// 	if !exists {
+// 		json.NewEncoder(w).Encode(CommandResponse{Error: fmt.Sprintf("Service %s not found in configuration", imageName)})
+// 		return
+// 	}
+
+// 	if !serviceConfig.Enabled {
+// 		json.NewEncoder(w).Encode(CommandResponse{Output: fmt.Sprintf("Service %s is disabled in configuration", imageName)})
+// 		return
+// 	}
+
+// 	image := fmt.Sprintf("docker.io/anjali0/%s:latest", imageName)
+// 	result := ExecuteCommand("podman", "pull", image)
+// 	json.NewEncoder(w).Encode(result)
+// }
+
+// // end of the code .......
+
+// // TagImage handles tagging a pulled image with a new name
+// func TagImage(w http.ResponseWriter, r *http.Request) {
+
+// 	vars := mux.Vars(r)
+// 	imageName := vars["image"]
+
+// 	originalImage := fmt.Sprintf("docker.io/anjali0/%s:latest", imageName)
+// 	newImage := fmt.Sprintf("docker.io/anjali0/%s-bcknd:latest", imageName)
+
+// 	result := ExecuteCommand("podman", "tag", originalImage, newImage)
+// 	json.NewEncoder(w).Encode(result)
+// }
+
+// // SaveImage handles saving the tagged image into a .tar file in the /tmp directory
+// func SaveImage(w http.ResponseWriter, r *http.Request) {
+
+// 	vars := mux.Vars(r)
+// 	imageName := vars["image"]
+
+// 	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
+// 	image := fmt.Sprintf("docker.io/anjali0/%s-bcknd:latest", imageName)
+
+// 	result := ExecuteCommand("podman", "save", "-o", tarFile, image)
+// 	log.Println("SaveImage endpoint hit")
+// 	json.NewEncoder(w).Encode(result)
+// }
+
+// // LoadImage handles loading the .tar file as root
+// func LoadImage(w http.ResponseWriter, r *http.Request) {
+
+// 	vars := mux.Vars(r)
+// 	imageName := vars["image"]
+
+// 	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
+
+// 	result := ExecuteCommand("sudo", "podman", "load", "-i", tarFile)
+// 	log.Println("LoadImage endpoint hit")
+// 	json.NewEncoder(w).Encode(result)
+// }
+
+// // CreateUnitFile handles creating the systemd unit file for the container
+// func CreateUnitFile(w http.ResponseWriter, r *http.Request) {
+// 	vars := mux.Vars(r)
+// 	imageName := vars["image"]
+
+// 	config, err := LoadConfiguration()
+// 	if err != nil {
+// 		json.NewEncoder(w).Encode(CommandResponse{Error: err.Error()})
+// 		return
+// 	}
+
+// 	serviceConfig, exists := config.Services[imageName]
+// 	if !exists {
+// 		json.NewEncoder(w).Encode(CommandResponse{Error: fmt.Sprintf("Service %s not found in configuration", imageName)})
+// 		return
+// 	}
+
+// 	unitFileContent := fmt.Sprintf(`[Unit]
+//  Description=Podman container-%s-bcknd.service
+//  Documentation=man:podman-generate-systemd(1)
+//  Wants=network-online.target
+//  After=network-online.target
+//  RequiresMountsFor=%%t/containers
+
+//  [Service]
+//  Environment=PODMAN_SYSTEMD_UNIT=%%n
+//  Restart=on-failure
+//  ExecStart=%s
+//  ExecStop=%s
+//  ExecStopPost=%s
+//  TimeoutStopSec=70
+//  Type=simple
+//  NotifyAccess=all
+
+//  [Install]
+//  WantedBy=multi-user.target
+//  `, imageName, serviceConfig.ExecStart, serviceConfig.ExecStop, serviceConfig.ExecStopPost)
+
+// 	unitFilePath := fmt.Sprintf("/etc/systemd/system/%s-bcknd.service", imageName)
+
+// 	err = os.WriteFile(unitFilePath, []byte(unitFileContent), 0644)
+// 	if err != nil {
+// 		json.NewEncoder(w).Encode(CommandResponse{Error: err.Error()})
+// 		return
+// 	}
+// 	json.NewEncoder(w).Encode(CommandResponse{Output: "Unit file created successfully"})
+// }
+
+// // EnableAndStartService handles enabling and starting the systemd service
+// func EnableAndStartService(w http.ResponseWriter, r *http.Request) {
+// 	vars := mux.Vars(r)
+// 	imageName := vars["image"]
+// 	serviceFileName := fmt.Sprintf("%s-bcknd.service", imageName)
+
+// 	enableResult := ExecuteCommand("sudo", "systemctl", "enable", serviceFileName)
+// 	if enableResult.Error != "" {
+// 		json.NewEncoder(w).Encode(enableResult)
+// 		return
+// 	}
+
+// 	daemonReloadResult := ExecuteCommand("sudo", "systemctl", "daemon-reload")
+// 	if daemonReloadResult.Error != "" {
+// 		json.NewEncoder(w).Encode(daemonReloadResult)
+// 		return
+// 	}
+
+// 	startResult := ExecuteCommand("sudo", "systemctl", "start", serviceFileName)
+// 	json.NewEncoder(w).Encode(startResult)
+// }
+
+// ...
+// InitializeServices initializes all services defined in the configuration file
+// func InitializeServices() {
+// 	loginResult := performLogin()
+// 	if loginResult.Error != "" {
+// 		log.Println("Login failed:", loginResult.Error)
+// 		return
+// 	}
+
+// 	config, err := LoadConfiguration()
+// 	if err != nil {
+// 		log.Println("Failed to load configuration:", err)
+// 		return
+// 	}
+
+// 	for imageName, serviceConfig := range config.Services {
+// 		if !serviceConfig.Enabled {
+// 			log.Printf("Service %s is disabled in configuration\n", imageName)
+// 			continue
+// 		}
+
+// 		log.Printf("Processing service: %s\n", imageName)
+
+// 		// Perform each step for the service
+// 		pullImage(imageName)
+// 		tagImage(imageName)
+// 		saveImage(imageName)
+// 		loadImage(imageName)
+// 		createUnitFile(imageName)
+// 		enableAndStartService(imageName)
+// 	}
+// }
+
+// func pullImage(imageName string) {
+// 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8000/pull/%s", imageName), nil)
+// 	if err != nil {
+// 		log.Println("Failed to create request:", err)
+// 		return
+// 	}
+// 	resp, err := http.DefaultClient.Do(req)
+// 	if err != nil {
+// 		log.Println("Failed to pull image:", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	var result CommandResponse
+// 	json.NewDecoder(resp.Body).Decode(&result)
+// 	if result.Error != "" {
+// 		log.Printf("Failed to pull image %s: %s\n", imageName, result.Error)
+// 	} else {
+// 		log.Printf("Successfully pulled image %s\n", imageName)
+// 	}
+// }
+
+// func tagImage(imageName string) {
+// 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8000/tag/%s", imageName), nil)
+// 	if err != nil {
+// 		log.Println("Failed to create request:", err)
+// 		return
+// 	}
+// 	resp, err := http.DefaultClient.Do(req)
+// 	if err != nil {
+// 		log.Println("Failed to tag image:", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	var result CommandResponse
+// 	json.NewDecoder(resp.Body).Decode(&result)
+// 	if result.Error != "" {
+// 		log.Printf("Failed to tag image %s: %s\n", imageName, result.Error)
+// 	} else {
+// 		log.Printf("Successfully tagged image %s\n", imageName)
+// 	}
+// }
+
+// func saveImage(imageName string) {
+// 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8000/save/%s", imageName), nil)
+// 	if err != nil {
+// 		log.Println("Failed to create request:", err)
+// 		return
+// 	}
+// 	resp, err := http.DefaultClient.Do(req)
+// 	if err != nil {
+// 		log.Println("Failed to save image:", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	var result CommandResponse
+// 	json.NewDecoder(resp.Body).Decode(&result)
+// 	if result.Error != "" {
+// 		log.Printf("Failed to save image %s: %s\n", imageName, result.Error)
+// 	} else {
+// 		log.Printf("Successfully saved image %s\n", imageName)
+// 	}
+// }
+
+// func loadImage(imageName string) {
+// 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8000/load/%s", imageName), nil)
+// 	if err != nil {
+// 		log.Println("Failed to create request:", err)
+// 		return
+// 	}
+// 	resp, err := http.DefaultClient.Do(req)
+// 	if err != nil {
+// 		log.Println("Failed to load image:", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	var result CommandResponse
+// 	json.NewDecoder(resp.Body).Decode(&result)
+// 	if result.Error != "" {
+// 		log.Printf("Failed to load image %s: %s\n", imageName, result.Error)
+// 	} else {
+// 		log.Printf("Successfully loaded image %s\n", imageName)
+// 	}
+// }
+
+// func createUnitFile(imageName string) {
+// 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8000/create-unit-file/%s", imageName), nil)
+// 	if err != nil {
+// 		log.Println("Failed to create request:", err)
+// 		return
+// 	}
+// 	resp, err := http.DefaultClient.Do(req)
+// 	if err != nil {
+// 		log.Println("Failed to create unit file:", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	var result CommandResponse
+// 	json.NewDecoder(resp.Body).Decode(&result)
+// 	if result.Error != "" {
+// 		log.Printf("Failed to create unit file for %s: %s\n", imageName, result.Error)
+// 	} else {
+// 		log.Printf("Successfully created unit file for %s\n", imageName)
+// 	}
+// }
+
+// func enableAndStartService(imageName string) {
+// 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8000/enable-and-start-service/%s", imageName), nil)
+// 	if err != nil {
+// 		log.Println("Failed to create request:", err)
+// 		return
+// 	}
+// 	resp, err := http.DefaultClient.Do(req)
+// 	if err != nil {
+// 		log.Println("Failed to enable and start service:", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	var result CommandResponse
+// 	json.NewDecoder(resp.Body).Decode(&result)
+// 	if result.Error != "" {
+// 		log.Printf("Failed to enable and start service %s: %s\n", imageName, result.Error)
+// 	} else {
+// 		log.Printf("Successfully enabled and started service %s\n", imageName)
+// 	}
+// }
+
+// //...

@@ -1,4 +1,18 @@
-// CommandResponse is the structure of the response for command execution
+// package main
+
+// import (
+// 	"embed"
+// 	"encoding/json"
+// 	"fmt"
+// 	"log"
+// 	"net/http"
+// 	"os"
+// 	"os/exec"
+
+// 	"github.com/gorilla/mux"
+// )
+
+// // CommandResponse is the structure of the response for command execution
 // type CommandResponse struct {
 // 	Output string `json:"output"`
 // 	Error  string `json:"error,omitempty"`
@@ -17,7 +31,7 @@
 // 	Services map[string]ServiceConfig `json:"services"`
 // }
 
-// ExecuteCommand runs a command and returns the output
+// // ExecuteCommand runs a command and returns the output
 // func ExecuteCommand(command string, args ...string) CommandResponse {
 // 	cmd := exec.Command(command, args...)
 // 	output, err := cmd.CombinedOutput()
@@ -27,21 +41,25 @@
 // 	return CommandResponse{Output: string(output)}
 // }
 
+// //go:embed default-config.json
+// var defaultConfig embed.FS
+
 // // LoadConfiguration loads the default and user configurations
 // func LoadConfiguration() (Config, error) {
+
 // 	var config Config
 
-// 	// Load default configuration
-// 	defaultConfigFile, err := os.ReadFile("default-config.json")
+// 	// Read the embedded default configuration
+// 	defaultConfigFile, err := defaultConfig.ReadFile("default-config.json")
 // 	if err != nil {
 // 		return config, err
 // 	}
+
+// 	// Unmarshal the JSON data into the config structure
 // 	if err := json.Unmarshal(defaultConfigFile, &config); err != nil {
 // 		return config, err
 // 	}
-
-// 	// User configuration loading and merging can be implemented here if needed
-
+// 	log.Printf("read your file")
 // 	return config, nil
 // }
 
@@ -207,8 +225,7 @@
 // 	json.NewEncoder(w).Encode(startResult)
 // }
 
-// ...
-// InitializeServices initializes all services defined in the configuration file
+// // InitializeServices initializes all services defined in the configuration file
 // func InitializeServices() {
 // 	loginResult := performLogin()
 // 	if loginResult.Error != "" {
@@ -366,4 +383,267 @@
 // 	}
 // }
 
+// func main() {
+// 	// Initialize services on startup
+// 	log.Println("Starting configuration loader...")
+
+// 	go func() {
+// 		InitializeServices()
+// 	}()
+
+// 	log.Println("Configuration applied successfully.")
+
+// 	router := mux.NewRouter()
+// 	router.HandleFunc("/login", Login).Methods("POST")
+// 	router.HandleFunc("/pull/{image}", PullImage).Methods("GET")
+// 	router.HandleFunc("/tag/{image}", TagImage).Methods("GET")
+// 	router.HandleFunc("/save/{image}", SaveImage).Methods("GET")
+// 	router.HandleFunc("/load/{image}", LoadImage).Methods("GET")
+// 	router.HandleFunc("/create-unit-file/{image}", CreateUnitFile).Methods("GET")
+// 	router.HandleFunc("/enable-and-start-service/{image}", EnableAndStartService).Methods("GET")
+
+// 	log.Fatal(http.ListenAndServe(":8000", router))
+// }
+
 // //...
+
+package main
+
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+)
+
+// CommandResponse is the structure of the response for command execution
+type CommandResponse struct {
+	Output string `json:"output"`
+	Error  string `json:"error,omitempty"`
+}
+
+// ServiceConfig represents the configuration for a service
+type ServiceConfig struct {
+	Enabled      bool   `json:"enabled"`
+	ExecStart    string `json:"exec_start"`
+	ExecStop     string `json:"exec_stop"`
+	ExecStopPost string `json:"exec_stop_post"`
+}
+
+// Config represents the configuration file structure
+type Config struct {
+	Services map[string]ServiceConfig `json:"services"`
+}
+
+// ExecuteCommand runs a command and returns the output
+func ExecuteCommand(command string, args ...string) CommandResponse {
+	cmd := exec.Command(command, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return CommandResponse{Output: string(output), Error: err.Error()}
+	}
+	return CommandResponse{Output: string(output)}
+}
+
+//go:embed default-config.json
+var defaultConfig embed.FS
+
+// LoadConfiguration loads the default and user configurations
+func LoadConfiguration() (Config, error) {
+	var config Config
+
+	// Read the embedded default configuration
+	defaultConfigFile, err := defaultConfig.ReadFile("default-config.json")
+	if err != nil {
+		return config, err
+	}
+
+	// Unmarshal the JSON data into the config structure
+	if err := json.Unmarshal(defaultConfigFile, &config); err != nil {
+		return config, err
+	}
+	log.Printf("Configuration file loaded successfully")
+	return config, nil
+}
+
+// performLogin contains the core logic for logging into a registry
+func performLogin() CommandResponse {
+	username := "anjali0"
+	password := "Anjali@123"
+	registry := "docker.io"
+	return ExecuteCommand("podman", "login", registry, "-u", username, "-p", password)
+}
+
+func InitializeServices() {
+	loginResult := performLogin()
+	if loginResult.Error != "" {
+		log.Println("Login failed:", loginResult.Error)
+		return
+	}
+
+	config, err := LoadConfiguration()
+	if err != nil {
+		log.Println("Failed to load configuration:", err)
+		return
+	}
+
+	for imageName, serviceConfig := range config.Services {
+		if !serviceConfig.Enabled {
+			log.Printf("Service %s is disabled in configuration\n", imageName)
+			continue
+		}
+
+		log.Printf("Processing service: %s\n", imageName)
+		// Check and disable existing service if running
+		if checkAndDisableExistingService(imageName) {
+			log.Printf("Existing service %s found and disabled\n", imageName)
+		}
+
+		pullImage(imageName)
+		tagImage(imageName)
+		saveImage(imageName)
+		loadImage(imageName)
+		createUnitFile(imageName)
+		enableAndStartService(imageName)
+	}
+}
+
+func checkAndDisableExistingService(imageName string) bool {
+	serviceFileName := fmt.Sprintf("%s.service", imageName)
+
+	// Check if the service is active
+	checkResult := ExecuteCommand("sudo", "systemctl", "is-active", "--quiet", serviceFileName)
+	if checkResult.Error == "" {
+		// Service is active, disable it
+		stopResult := ExecuteCommand("sudo", "systemctl", "stop", serviceFileName)
+		if stopResult.Error != "" {
+			log.Printf("Failed to stop service %s: %s\n", serviceFileName, stopResult.Error)
+			return false
+		}
+
+		disableResult := ExecuteCommand("sudo", "systemctl", "disable", serviceFileName)
+		if disableResult.Error != "" {
+			log.Printf("Failed to disable service %s: %s\n", serviceFileName, disableResult.Error)
+			return false
+		}
+
+		daemonReloadResult := ExecuteCommand("sudo", "systemctl", "daemon-reload")
+		if daemonReloadResult.Error != "" {
+			log.Printf("Failed to reload daemon after disabling service %s: %s\n", serviceFileName, daemonReloadResult.Error)
+			return false
+		}
+
+		return true
+	}
+	// Service is not active or does not exist
+	return false
+}
+
+func pullImage(imageName string) {
+	image := fmt.Sprintf("docker.io/anjali0/%s:latest", imageName)
+	result := ExecuteCommand("podman", "pull", image)
+	logResult("pull", imageName, result)
+}
+
+func tagImage(imageName string) {
+	originalImage := fmt.Sprintf("docker.io/anjali0/%s:latest", imageName)
+	newImage := fmt.Sprintf("docker.io/anjali0/%s-bcknd:latest", imageName)
+	result := ExecuteCommand("podman", "tag", originalImage, newImage)
+	logResult("tag", imageName, result)
+}
+
+func saveImage(imageName string) {
+	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
+	image := fmt.Sprintf("docker.io/anjali0/%s-bcknd:latest", imageName)
+	result := ExecuteCommand("podman", "save", "-o", tarFile, image)
+	logResult("save", imageName, result)
+}
+
+func loadImage(imageName string) {
+	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
+	result := ExecuteCommand("sudo", "podman", "load", "-i", tarFile)
+	logResult("load", imageName, result)
+}
+
+func createUnitFile(imageName string) {
+	config, err := LoadConfiguration()
+	if err != nil {
+		log.Println("Failed to load configuration:", err)
+		return
+	}
+
+	serviceConfig, exists := config.Services[imageName]
+	if !exists {
+		log.Printf("Service %s not found in configuration\n", imageName)
+		return
+	}
+
+	unitFileContent := fmt.Sprintf(`[Unit]
+Description=Podman container-%s-bcknd.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=%%t/containers
+
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%%n
+Restart=on-failure
+ExecStart=%s
+ExecStop=%s
+ExecStopPost=%s
+TimeoutStopSec=70
+Type=simple
+NotifyAccess=all
+
+
+[Install]
+WantedBy=multi-user.target
+`, imageName, serviceConfig.ExecStart, serviceConfig.ExecStop, serviceConfig.ExecStopPost)
+
+	unitFilePath := fmt.Sprintf("/etc/systemd/system/%s-bcknd.service", imageName)
+
+	err = os.WriteFile(unitFilePath, []byte(unitFileContent), 0644)
+	if err != nil {
+		log.Printf("Failed to create unit file for %s: %s\n", imageName, err)
+		return
+	}
+	log.Printf("Successfully created unit file for %s\n", imageName)
+}
+
+func enableAndStartService(imageName string) {
+	serviceFileName := fmt.Sprintf("%s-bcknd.service", imageName)
+
+	enableResult := ExecuteCommand("sudo", "systemctl", "enable", serviceFileName)
+	if enableResult.Error != "" {
+		logResult("enable", imageName, enableResult)
+		return
+	}
+
+	daemonReloadResult := ExecuteCommand("sudo", "systemctl", "daemon-reload")
+	if daemonReloadResult.Error != "" {
+		logResult("daemon-reload", imageName, daemonReloadResult)
+		return
+	}
+
+	startResult := ExecuteCommand("sudo", "systemctl", "start", serviceFileName)
+	logResult("start", imageName, startResult)
+}
+
+func logResult(action, imageName string, result CommandResponse) {
+	if result.Error != "" {
+		log.Printf("Failed to %s image %s: %s\n", action, imageName, result.Error)
+	} else {
+		log.Printf("Successfully %sed image %s: %s\n", action, imageName, result.Output)
+	}
+}
+
+func main() {
+	log.Println("Starting configuration loader...")
+
+	InitializeServices()
+
+	log.Println("Configuration applied successfully.")
+}

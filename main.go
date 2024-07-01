@@ -503,8 +503,8 @@ func InitializeServices() {
 
 		pullImage(imageName)
 		tagImage(imageName)
-		saveImage(imageName)
-		loadImage(imageName)
+		// saveImage(imageName)
+		// loadImage(imageName)
 		createUnitFile(imageName)
 		enableAndStartService(imageName)
 	}
@@ -529,6 +529,11 @@ func checkAndDisableExistingService(imageName string) bool {
 			return false
 		}
 
+		maskResult := ExecuteCommand("sudo", "systemctl", "mask", serviceFileName)
+		if maskResult.Error != "" {
+			log.Printf("Failed to mask service %s: %s\n", serviceFileName, disableResult.Error)
+			return false
+		}
 		daemonReloadResult := ExecuteCommand("sudo", "systemctl", "daemon-reload")
 		if daemonReloadResult.Error != "" {
 			log.Printf("Failed to reload daemon after disabling service %s: %s\n", serviceFileName, daemonReloadResult.Error)
@@ -554,18 +559,23 @@ func tagImage(imageName string) {
 	logResult("tag", imageName, result)
 }
 
-func saveImage(imageName string) {
-	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
-	image := fmt.Sprintf("docker.io/anjali0/%s-bcknd:latest", imageName)
-	result := ExecuteCommand("podman", "save", "-o", tarFile, image)
-	logResult("save", imageName, result)
-}
+/*For now I am commenting this as this code with run with sudo privileges
+and is responsible for pulling and starting the container services so we not
+need to addtional code to save the container images into tar file and load them
+as a root image separately*/
 
-func loadImage(imageName string) {
-	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
-	result := ExecuteCommand("sudo", "podman", "load", "-i", tarFile)
-	logResult("load", imageName, result)
-}
+// func saveImage(imageName string) {
+// 	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
+// 	image := fmt.Sprintf("docker.io/anjali0/%s-bcknd:latest", imageName)
+// 	result := ExecuteCommand("podman", "save", "-o", tarFile, image)
+// 	logResult("save", imageName, result)
+// }
+
+// func loadImage(imageName string) {
+// 	tarFile := fmt.Sprintf("/tmp/%s-bcknd.tar", imageName)
+// 	result := ExecuteCommand("sudo", "podman", "load", "-i", tarFile)
+// 	logResult("load", imageName, result)
+// }
 
 func createUnitFile(imageName string) {
 	config, err := LoadConfiguration()

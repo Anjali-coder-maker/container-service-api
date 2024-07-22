@@ -1,0 +1,4 @@
+utils/.env
+config/default-config.json
+.vscode
+build/

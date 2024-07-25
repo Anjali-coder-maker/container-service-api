@@ -1,3 +1,5 @@
+//go:build default
+
 package handlers
 
 import (

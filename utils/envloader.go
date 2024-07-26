@@ -62,11 +62,11 @@ func performLogin() {
 	arch := runtime.GOARCH
 	switch arch {
 	case "amd64":
-		username = os.Getenv("DOCKER_USERNAME_AMD")
-		password = os.Getenv("DOCKER_PASSWORD_AMD")
+		username = envMap["DOCKER_USERNAME_AMD"]
+		password = envMap["DOCKER_PASSWORD_AMD"]
 	case "arm64":
-		username = os.Getenv("DOCKER_USERNAME_ARM")
-		password = os.Getenv("DOCKER_PASSWORD_ARM")
+		username = envMap["DOCKER_USERNAME_ARM"]
+		password = envMap["DOCKER_PASSWORD_ARM"]
 	default:
 		log.Fatalf("Unsupported architecture: %s", arch)
 	}

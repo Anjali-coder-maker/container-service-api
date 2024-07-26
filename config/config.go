@@ -1,5 +1,3 @@
-//go:build default
-
 package config
 
 import (

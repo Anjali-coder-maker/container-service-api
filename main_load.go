@@ -73,7 +73,7 @@ func applyConfigFile(filePath string) error {
 	}
 
 	for service, enable := range configurations {
-		fullServiceName := service + "-bcknd.service"
+		fullServiceName := service + "-backend.service"
 		if enable {
 			err := handlers.EnableService(fullServiceName)
 			if err != nil {

@@ -4,7 +4,10 @@ package handlers
 
 import (
 	"fmt"
+	"go-podman-api/config"
 	"go-podman-api/utils"
+	"os"
+	"runtime"
 	"strings"
 )
 
@@ -75,4 +78,71 @@ func EnableService(service string) error {
 		}
 	}
 	return nil
+}
+
+func PullImageChroot(serviceName string, chrootpath string) (utils.CommandResponse, string) {
+	arch := runtime.GOARCH
+	var tag string
+
+	// Set the tag based on the architecture
+	if arch == "arm" || arch == "arm64" {
+		tag = "latest-arm"
+	} else {
+		tag = "latest-amd"
+	}
+
+	// Construct the full image name
+	username := "ahaosv1"
+	image := fmt.Sprintf("docker.io/%s/%s:%s", username, serviceName, tag)
+
+	resp := utils.ExecuteCommand("chroot", chrootpath, "podman", "pull", image)
+	if resp.Error != "" {
+		return utils.CommandResponse{Error: resp.Error}, ""
+	}
+	return utils.CommandResponse{Output: "Image pulled and saved successfully"}, image
+}
+
+func CreateAndPlaceUnitFile(serviceName, chrootDir string, serviceConfig config.ServiceConfig) error {
+	unitFileContent := fmt.Sprintf(`[Unit]
+Description=%s service
+After=network.target
+
+[Service]
+ExecStart=%s
+ExecStop=%s
+ExecStopPost=%s
+
+[Install]
+WantedBy=multi-user.target
+`, serviceName, serviceConfig.ExecStart, serviceConfig.ExecStop, serviceConfig.ExecStopPost)
+
+	unitFilePath := fmt.Sprintf("%s/etc/systemd/system/%s-backend.service", chrootDir, serviceName)
+
+	file, err := os.Create(unitFilePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(unitFileContent)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Created unit file for %s at %s\n", serviceName, unitFilePath)
+	return nil
+}
+
+func MoveOverlayUpperToRoot() utils.CommandResponse {
+	resp := utils.ExecuteCommand("rsync", "-a", "/overlay/upper/", "/")
+	if resp.Error != "" {
+		return utils.CommandResponse{Error: fmt.Sprintf("Error moving overlay upper to root: %v", resp.Error)}
+	}
+
+	// restart the system
+	resp = utils.ExecuteCommand("reboot")
+	if resp.Error != "" {
+		return utils.CommandResponse{Error: fmt.Sprintf("Error restarting the system: %v", resp.Error)}
+	}
+	return utils.CommandResponse{Output: "System restarted successfully"}
 }

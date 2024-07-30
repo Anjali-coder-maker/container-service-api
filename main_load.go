@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"go-podman-api/config"
 	"go-podman-api/handlers"
 	"os"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 const configDirPath = "/etc/service-manager"
 const defaultConfigFilePath = "/etc/service-manager/configuration.conf"
+const mergeDirPath = "/overlay/merged"
 
 func run() {
 	loadFlag := flag.String("load", defaultConfigFilePath, "Load configuration from /etc/service-manager/configuration.conf. You can specify your own file path also.")
@@ -72,7 +74,39 @@ func applyConfigFile(filePath string) error {
 		return err
 	}
 
+	// get the default services
+	cfg := config.GetConfig().Services
+
 	for service, enable := range configurations {
+		// check if the service in the configuration file is there in the default services or not
+		if _, ok := cfg[service]; !ok {
+			fmt.Printf("Service %s is not available in the default services\n", service)
+			fmt.Println("Pulling the container in chroot environment")
+			// pull the container in chroot environment
+			res, image_name := handlers.PullImageChroot(service, mergeDirPath)
+
+			if res.Error != "" {
+				fmt.Printf("Error pulling image %s: %v\n", image_name, res.Error)
+				continue
+			}
+
+			// prepare the serviceConfig
+			serviceConfig := config.ServiceConfig{
+				Enabled:      enable,
+				ExecStart:    fmt.Sprintf("/usr/bin/podman run --name %s-service-backend %s", service, image_name),
+				ExecStop:     fmt.Sprintf("/usr/bin/podman stop -t 10 %s-service-backend", service),
+				ExecStopPost: fmt.Sprintf("/usr/bin/podman rm -t 10 %s-service-backend", service),
+			}
+
+			err = handlers.CreateAndPlaceUnitFile(service, mergeDirPath, serviceConfig)
+			if err != nil {
+				fmt.Printf("Error creating unit file for service %s: %v\n", service, err)
+				continue
+			}
+
+			continue
+		}
+
 		fullServiceName := service + "-backend.service"
 		if enable {
 			err := handlers.EnableService(fullServiceName)
@@ -90,6 +124,14 @@ func applyConfigFile(filePath string) error {
 			}
 		}
 	}
+
+	// All the configurations are done now move everything from /overlay/upper to /
+	res := handlers.MoveOverlayUpperToRoot()
+	if res.Error != "" {
+		return fmt.Errorf("Error moving overlay upper to root: %v", res.Error)
+	}
+
+	// Now everything is fine
 	return nil
 }
 

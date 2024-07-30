@@ -33,18 +33,17 @@ func PullImage(imageName string) utils.CommandResponse {
 	}
 
 	arch := runtime.GOARCH
-	var tag, username string
+	var tag string
 
 	// Set the tag based on the architecture
 	if arch == "arm" || arch == "arm64" {
 		tag = "latest-arm"
-		username = os.Getenv("DOCKER_USERNAME_ARM")
 	} else {
-		tag = "latest"
-		username = os.Getenv("DOCKER_USERNAME_AMD")
+		tag = "latest-amd"
 	}
 
 	// Construct the full image name
+	username := utils.Getenvmap()["DOCKER_USERNAME"]
 	image := fmt.Sprintf("docker.io/%s/%s:%s", username, imageName, tag)
 	result := utils.ExecuteCommand("podman", "pull", image)
 
@@ -57,6 +56,23 @@ func CreateUnitFile(imageName string) utils.CommandResponse {
 	if !exists {
 		return utils.CommandResponse{Error: fmt.Sprintf("Service %s not found in configuration", imageName)}
 	}
+
+	arch := runtime.GOARCH
+	var tag string
+
+	// Set the tag based on the architecture
+	if arch == "arm" || arch == "arm64" {
+		tag = "latest-arm"
+	} else {
+		tag = "latest-amd"
+	}
+
+	// Construct the full image name
+	username := "ahaosv1"
+	image := fmt.Sprintf("docker.io/%s/%s:%s", username, imageName, tag)
+
+	// Update ExecStart command with the correct image
+	execStartCommand := fmt.Sprintf("%s %s", serviceConfig.ExecStart, image)
 
 	unitFileContent := fmt.Sprintf(`[Unit]
 Description=Podman container-%s-backend.service
@@ -77,7 +93,7 @@ NotifyAccess=all
 
 [Install]
 WantedBy=multi-user.target
-`, imageName, serviceConfig.ExecStart, serviceConfig.ExecStop, serviceConfig.ExecStopPost)
+`, imageName, execStartCommand, serviceConfig.ExecStop, serviceConfig.ExecStopPost)
 
 	unitFilePath := fmt.Sprintf("/etc/systemd/system/%s-backend.service", imageName)
 
@@ -126,15 +142,15 @@ func CheckAndDisableExistingService(imageName string) bool {
 func EnableAndStartService(imageName string) utils.CommandResponse {
 	serviceFileName := fmt.Sprintf("%s-backend.service", imageName)
 
-	enableResult := utils.ExecuteCommand("sudo", "systemctl", "enable", serviceFileName)
+	enableResult := utils.ExecuteCommand("systemctl", "enable", serviceFileName)
 	if enableResult.Error != "" {
 		return enableResult
 	}
 
-	daemonReloadResult := utils.ExecuteCommand("sudo", "systemctl", "daemon-reload")
+	daemonReloadResult := utils.ExecuteCommand("systemctl", "daemon-reload")
 	if daemonReloadResult.Error != "" {
 		return daemonReloadResult
 	}
 
-	return utils.ExecuteCommand("sudo", "systemctl", "start", serviceFileName)
+	return utils.ExecuteCommand("systemctl", "start", serviceFileName)
 }

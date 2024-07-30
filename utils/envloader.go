@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -56,27 +55,14 @@ func performLogin() {
 		return
 	}
 
-	var username, password string
-
-	// Determine the architecture
-	arch := runtime.GOARCH
-	switch arch {
-	case "amd64":
-		username = envMap["DOCKER_USERNAME_AMD"]
-		password = envMap["DOCKER_PASSWORD_AMD"]
-	case "arm64":
-		username = envMap["DOCKER_USERNAME_ARM"]
-		password = envMap["DOCKER_PASSWORD_ARM"]
-	default:
-		log.Fatalf("Unsupported architecture: %s", arch)
-	}
-
+	username := envMap["DOCKER_USERNAME"]
+	password := envMap["DOCKER_PASSWORD"]
 	registry := "docker.io"
 	result := ExecuteCommand("podman", "login", registry, "-u", username, "-p", password)
 	if result.Error != "" {
 		log.Fatalf("Login failed: %v", result.Error)
 	}
-	log.Println("Login succeeded")
+	// log.Println("Login succeeded")
 }
 
 // isLoggedIn checks if the user is already logged in

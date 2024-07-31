@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go-podman-api/config"
 	"go-podman-api/handlers"
+	"go-podman-api/utils"
 	"os"
 	"strings"
 )
@@ -69,33 +70,64 @@ func createConfigFileIfNotExists() error {
 }
 
 func applyConfigFile(filePath string) error {
-	configurations, err := readConfigurations(filePath)
+	userConfigurations, err := readConfigurations(filePath)
 	if err != nil {
 		return err
 	}
 
-	// get the default services
-	cfg := config.GetConfig().Services
+	// Get the default services and registry templates
+	defaultCfg := config.GetConfig().Services
+	registryTemplates := config.GetRegistryTemplates().Services
 
-	for service, enable := range configurations {
-		// check if the service in the configuration file is there in the default services or not
-		if _, ok := cfg[service]; !ok {
-			fmt.Printf("Service %s is not available in the default services\n", service)
+	for service, enable := range userConfigurations {
+		// Check if the service is in the default configuration
+		if _, ok := defaultCfg[service]; ok {
+			fullServiceName := service + "-backend.service"
+			if enable {
+				err := handlers.EnableService(fullServiceName)
+				if err != nil {
+					fmt.Printf("Error enabling service %s: %v\n", fullServiceName, err)
+				} else {
+					fmt.Printf("Enabled %s successfully\n", fullServiceName)
+				}
+			} else {
+				err := handlers.DisableService(fullServiceName)
+				if err != nil {
+					fmt.Printf("Error disabling service %s: %v\n", fullServiceName, err)
+				} else {
+					fmt.Printf("Disabled %s successfully\n", fullServiceName)
+				}
+			}
+			continue
+		}
+
+		// Service not found in default configuration, check if the image is already present
+		imageName := fmt.Sprintf("docker.io/ahaosv1/%s", service)
+		if !isImagePresent(imageName) {
+			fmt.Printf("Service %s is not available in the default services and image not found locally\n", service)
 			fmt.Println("Pulling the container in chroot environment")
-			// pull the container in chroot environment
-			res, image_name := handlers.PullImageChroot(service, mergeDirPath)
 
-			if res.Error != "" {
-				fmt.Printf("Error pulling image %s: %v\n", image_name, res.Error)
+			// Pull the container in chroot environment
+			pulledImageName, res := handlers.PullImageChroot(service, mergeDirPath)
+			if res != nil {
+				fmt.Printf("Error pulling image %s: %v\n", pulledImageName, res.Error)
+				continue
+			}
+			imageName = pulledImageName
+
+			// Check if the service is in the registry templates
+			template, exists := registryTemplates[service]
+			if !exists {
+				fmt.Printf("No template found for service %s\n", service)
 				continue
 			}
 
-			// prepare the serviceConfig
+			// Prepare the serviceConfig using the registry template
 			serviceConfig := config.ServiceConfig{
 				Enabled:      enable,
-				ExecStart:    fmt.Sprintf("/usr/bin/podman run --name %s-service-backend %s", service, image_name),
-				ExecStop:     fmt.Sprintf("/usr/bin/podman stop -t 10 %s-service-backend", service),
-				ExecStopPost: fmt.Sprintf("/usr/bin/podman rm -t 10 %s-service-backend", service),
+				ExecStart:    fmt.Sprintf("%s %s", template.ExecStart, imageName),
+				ExecStop:     template.ExecStop,
+				ExecStopPost: template.ExecStopPost,
 			}
 
 			err = handlers.CreateAndPlaceUnitFile(service, mergeDirPath, serviceConfig)
@@ -104,9 +136,17 @@ func applyConfigFile(filePath string) error {
 				continue
 			}
 
-			continue
+			// Move everything from /overlay/upper to /
+			res = handlers.MoveOverlayUpperToRoot()
+			if res != nil {
+				fmt.Printf("Error moving overlay upper directory to root: %v\n", res.Error)
+				continue
+			}
+		} else {
+			fmt.Printf("Image for service %s found locally, skipping pull step\n", service)
 		}
 
+		// Enable or disable the service based on the user configuration
 		fullServiceName := service + "-backend.service"
 		if enable {
 			err := handlers.EnableService(fullServiceName)
@@ -124,15 +164,29 @@ func applyConfigFile(filePath string) error {
 			}
 		}
 	}
-
-	// All the configurations are done now move everything from /overlay/upper to /
-	res := handlers.MoveOverlayUpperToRoot()
-	if res.Error != "" {
-		return fmt.Errorf("Error moving overlay upper to root: %v", res.Error)
-	}
-
-	// Now everything is fine
 	return nil
+}
+
+func isImagePresent(imageName string) bool {
+	resp := utils.ExecuteCommand("podman", "images", "-q", imageName)
+	outputLines := strings.Split(resp.Output, "\n")
+	for _, line := range outputLines {
+		trimmedLine := strings.TrimSpace(line)
+		// Check if the line is a valid hexadecimal string
+		if isHex(trimmedLine) && len(trimmedLine) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func isHex(s string) bool {
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func readConfigurations(filePath string) (map[string]bool, error) {

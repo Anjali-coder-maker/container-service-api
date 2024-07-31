@@ -26,7 +26,7 @@ func IsServiceAvailable(service string) bool {
 // DisableService stops and disables a service
 func DisableService(service string) error {
 	if !IsServiceRunning(service) {
-		return nil
+		return fmt.Errorf("service %s is not running", service)
 	}
 
 	resp := utils.ExecuteCommand("systemctl", "stop", service)
@@ -80,7 +80,8 @@ func EnableService(service string) error {
 	return nil
 }
 
-func PullImageChroot(serviceName string, chrootpath string) (utils.CommandResponse, string) {
+// PullImageChroot pulls a container image inside a chroot environment
+func PullImageChroot(serviceName string, chrootpath string) (string, error) {
 	arch := runtime.GOARCH
 	var tag string
 
@@ -97,11 +98,14 @@ func PullImageChroot(serviceName string, chrootpath string) (utils.CommandRespon
 
 	resp := utils.ExecuteCommand("chroot", chrootpath, "podman", "pull", image)
 	if resp.Error != "" {
-		return utils.CommandResponse{Error: resp.Error}, ""
+		return "", fmt.Errorf("error pulling image %s: %v", image, resp.Error)
 	}
-	return utils.CommandResponse{Output: "Image pulled and saved successfully"}, image
+
+	fmt.Printf("Pulled image %s successfully\n", image)
+	return image, nil
 }
 
+// CreateAndPlaceUnitFile creates a systemd unit file and places it in the chroot directory
 func CreateAndPlaceUnitFile(serviceName, chrootDir string, serviceConfig config.ServiceConfig) error {
 	unitFileContent := fmt.Sprintf(`[Unit]
 Description=%s service
@@ -133,16 +137,30 @@ WantedBy=multi-user.target
 	return nil
 }
 
-func MoveOverlayUpperToRoot() utils.CommandResponse {
-	resp := utils.ExecuteCommand("rsync", "-a", "/overlay/upper/", "/")
+// MoveOverlayUpperToRoot moves the overlay upper directory to the root directory
+func MoveOverlayUpperToRoot() error {
+	// Rsync with options to preserve attributes and ensure proper move
+	resp := utils.ExecuteCommand("rsync", "-aAXv", "/overlay/upper/", "/")
 	if resp.Error != "" {
-		return utils.CommandResponse{Error: fmt.Sprintf("Error moving overlay upper to root: %v", resp.Error)}
+		return fmt.Errorf("error moving overlay upper to root: %v", resp.Error)
 	}
 
-	// restart the system
-	resp = utils.ExecuteCommand("reboot")
+	// Remove the remaining files in the upper directory
+	resp = utils.ExecuteCommand("rm", "-rf", "/overlay/upper/*")
 	if resp.Error != "" {
-		return utils.CommandResponse{Error: fmt.Sprintf("Error restarting the system: %v", resp.Error)}
+		return fmt.Errorf("error removing files from overlay upper: %v", resp.Error)
 	}
-	return utils.CommandResponse{Output: "System restarted successfully"}
+
+	fmt.Printf("Moved overlay upper directory to root successfully\n")
+	return nil
+}
+
+// EnableTheNewService enables the new service
+func EnableTheNewService(serviceName string) error {
+	resp := utils.ExecuteCommand("systemctl", "enable", fmt.Sprintf("%s-backend.service", serviceName))
+	if resp.Error != "" {
+		return fmt.Errorf("error enabling the new service: %v", resp.Error)
+	}
+
+	return nil
 }

@@ -1,5 +1,6 @@
 utils/.env
 config/default-config.json
+config/registry-services.json
 .vscode
 build/
 vendor/

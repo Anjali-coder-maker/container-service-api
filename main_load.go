@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"go-podman-api/config"
@@ -18,7 +17,8 @@ const defaultConfigFilePath = "/etc/service-manager/configuration.conf"
 const mergeDirPath = "/overlay/merged"
 
 func run() {
-	loadFlag := flag.String("load", defaultConfigFilePath, "Load configuration from /etc/service-manager/configuration.conf. You can specify your own file path also.")
+	loadFlag := flag.String("load", "", "Load configuration from /etc/service-manager/configuration.conf. You can specify your own file path also.")
+	updateFlag := flag.Bool("update", false, "Update the services based on the configuration file.")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -28,6 +28,13 @@ func run() {
 		fmt.Fprintf(flag.CommandLine.Output(), "	  Examples:\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  		service-manager --load /path/to/custom/config/file\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  		service-manager (uses the default configuration file)\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  --update or -update\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "      Update the services based on the configuration file.\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "      If not specified, the services are not updated.\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "	  Examples:\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  		service-manager --update\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  		service-manager (services are not updated)\n")
 	}
 
 	flag.Parse()
@@ -38,15 +45,33 @@ func run() {
 		return
 	}
 
+	if *loadFlag != "" && *updateFlag {
+		fmt.Println("Both --load and --update flags cannot be used together.")
+		flag.Usage()
+		return
+	}
+
 	if *loadFlag != "" {
 		fmt.Println("Loading configuration from", *loadFlag)
 		err := applyConfigFile(*loadFlag)
 		if err != nil {
 			fmt.Println("Error applying configuration:", err)
 		}
+		return
+	}
+
+	if *updateFlag {
+		fmt.Println("Updating services based on the configuration file")
+		err := handlers.UpdateServices(defaultConfigFilePath)
+		if err != nil {
+			fmt.Println("Error updating services:", err)
+		}
+
+		return
 	}
 }
 
+// Create the configuration file if it does not exist
 func createConfigFileIfNotExists() error {
 	err := os.MkdirAll(configDirPath, 0755)
 	if err != nil {
@@ -69,8 +94,9 @@ func createConfigFileIfNotExists() error {
 	return nil
 }
 
+// Apply the configuration file to the services
 func applyConfigFile(filePath string) error {
-	userConfigurations, err := readConfigurations(filePath)
+	userConfigurations, err := handlers.ReadConfigurations(filePath)
 	if err != nil {
 		return err
 	}
@@ -167,6 +193,7 @@ func applyConfigFile(filePath string) error {
 	return nil
 }
 
+// Check if the image is present locally
 func isImagePresent(imageName string) bool {
 	resp := utils.ExecuteCommand("podman", "images", "-q", imageName)
 	outputLines := strings.Split(resp.Output, "\n")
@@ -187,41 +214,4 @@ func isHex(s string) bool {
 		}
 	}
 	return true
-}
-
-func readConfigurations(filePath string) (map[string]bool, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	configurations := make(map[string]bool)
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmedLine := strings.TrimSpace(line)
-		if trimmedLine == "" || strings.HasPrefix(trimmedLine, "#") {
-			continue
-		}
-		parts := strings.Split(line, "=")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid configuration line: %s", line)
-		}
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1]) == "true"
-
-		if strings.HasPrefix(key, "service.") && strings.HasSuffix(key, ".enable") {
-			service := strings.TrimPrefix(key, "service.")
-			service = strings.TrimSuffix(service, ".enable")
-			configurations[service] = value
-		} else {
-			return nil, fmt.Errorf("invalid configuration key: %s", key)
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return configurations, nil
 }

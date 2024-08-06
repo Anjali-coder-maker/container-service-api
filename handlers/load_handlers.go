@@ -3,6 +3,7 @@
 package handlers
 
 import (
+	"bufio"
 	"fmt"
 	"go-podman-api/config"
 	"go-podman-api/utils"
@@ -78,6 +79,44 @@ func EnableService(service string) error {
 		}
 	}
 	return nil
+}
+
+// Read the configurations from the file
+func ReadConfigurations(filePath string) (map[string]bool, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	configurations := make(map[string]bool)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmedLine := strings.TrimSpace(line)
+		if trimmedLine == "" || strings.HasPrefix(trimmedLine, "#") {
+			continue
+		}
+		parts := strings.Split(line, "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid configuration line: %s", line)
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1]) == "true"
+
+		if strings.HasPrefix(key, "service.") && strings.HasSuffix(key, ".enable") {
+			service := strings.TrimPrefix(key, "service.")
+			service = strings.TrimSuffix(service, ".enable")
+			configurations[service] = value
+		} else {
+			return nil, fmt.Errorf("invalid configuration key: %s", key)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return configurations, nil
 }
 
 // PullImageChroot pulls a container image inside a chroot environment

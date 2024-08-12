@@ -102,12 +102,20 @@ func RevertToPreviousState() error {
 		return fmt.Errorf("error deleting current snapshot %s: %v", currentSnapshotPath, resp.Error)
 	}
 
-	// Step 2: Copy contents of previous snapshot to a new current snapshot
+	// // Step 2: Copy contents of previous snapshot to a new current snapshot
+	// newCurrentSnapshotPath := filepath.Join(snapshotDir, fmt.Sprintf("@system%d_current", previousNumber))
+	// fmt.Printf("Copying contents of %s to %s\n", previousSnapshot, newCurrentSnapshotPath)
+	// resp = utils.ExecuteCommand("sudo", "cp", "-r", filepath.Join(snapshotDir, previousSnapshot), newCurrentSnapshotPath)
+	// if resp.Error != "" {
+	// 	return fmt.Errorf("error copying previous snapshot %s to current: %v", previousSnapshot, resp.Error)
+	// }
+
+	// Step 2: Create a snapshot of the previous snapshot as the new current snapshot
 	newCurrentSnapshotPath := filepath.Join(snapshotDir, fmt.Sprintf("@system%d_current", previousNumber))
-	fmt.Printf("Copying contents of %s to %s\n", previousSnapshot, newCurrentSnapshotPath)
-	resp = utils.ExecuteCommand("sudo", "cp", "-r", filepath.Join(snapshotDir, previousSnapshot), newCurrentSnapshotPath)
+	fmt.Printf("Creating a snapshot of %s as %s\n", previousSnapshot, newCurrentSnapshotPath)
+	resp = utils.ExecuteCommand("sudo", "btrfs", "subvolume", "snapshot", filepath.Join(snapshotDir, previousSnapshot), newCurrentSnapshotPath)
 	if resp.Error != "" {
-		return fmt.Errorf("error copying previous snapshot %s to current: %v", previousSnapshot, resp.Error)
+		return fmt.Errorf("error creating snapshot from %s to current: %v", previousSnapshot, resp.Error)
 	}
 
 	// Step 3: Move the previous snapshot to root with safety checks
@@ -155,7 +163,7 @@ func RevertToPreviousState() error {
 	}
 
 	// Add a pause before rebooting
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 
 	// Step 5: Reboot the system
 	fmt.Println("Rebooting the system")

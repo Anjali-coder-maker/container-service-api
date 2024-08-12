@@ -62,7 +62,7 @@ func checkAndUpdateService(service string) error {
 	}
 
 	if currentImageID == "" {
-		fmt.Printf("No running container found for service %s, The %s service is disabled, Container image will be automatically updates in next run\n", service, service)
+		fmt.Printf("No running container found for service %s. The %s service is disabled. Container image will be automatically updated in the next run.\n", service, service)
 		return nil
 	}
 
@@ -71,11 +71,11 @@ func checkAndUpdateService(service string) error {
 		if err := restartService(service); err != nil {
 			return fmt.Errorf("error updating and restarting service %s: %v", service, err)
 		}
-	} else {
-		fmt.Printf("Service %s is already up-to-date\n", service)
+		return nil // Update happened
 	}
 
-	return nil
+	fmt.Printf("Service %s is already up-to-date\n", service)
+	return fmt.Errorf("no update required") // No update happened
 }
 
 func restartService(service string) error {
@@ -94,20 +94,25 @@ func restartService(service string) error {
 	return nil
 }
 
-func UpdateServices(filePath string) error {
+func UpdateServices(filePath string) (bool, error) {
 	fmt.Println("Checking for updates...")
 	// open the file and read the configurations
 	userConfigurations, err := ReadConfigurations(filePath)
 	if err != nil {
-		return fmt.Errorf("Error reading configurations from file %s: %v\n", filePath, err)
+		return false, fmt.Errorf("Error reading configurations from file %s: %v\n", filePath, err)
 	}
+
+	anyUpdates := false
 
 	// check and update the services
 	for service := range userConfigurations {
 		if err := checkAndUpdateService(service); err != nil {
 			fmt.Printf("Error updating service %s: %v\n", service, err)
+		} else {
+			anyUpdates = true
 		}
 	}
+
 	fmt.Println("Update completed")
-	return nil
+	return anyUpdates, nil
 }

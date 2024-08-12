@@ -4,3 +4,4 @@ config/registry-services.json
 .vscode
 build/
 vendor/
+commands

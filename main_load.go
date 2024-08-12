@@ -15,10 +15,12 @@ import (
 const configDirPath = "/etc/service-manager"
 const defaultConfigFilePath = "/etc/service-manager/configuration.conf"
 const mergeDirPath = "/overlay/merged"
+const snapshotDir = "/mnt/snapshots"
 
 func run() {
 	loadFlag := flag.String("load", "", "Load configuration from /etc/service-manager/configuration.conf. You can specify your own file path also.")
 	updateFlag := flag.Bool("update", false, "Update the services based on the configuration file.")
+	revertFlag := flag.Bool("rollback", false, "Revert to the previous state")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -45,6 +47,19 @@ func run() {
 		return
 	}
 
+	rootDevicePath := handlers.GetRootDevicePath()
+	if rootDevicePath == "" {
+		fmt.Println("Error: Unable to find root device path.")
+		return
+	}
+
+	fmt.Printf("Mounting root device %s to /mnt\n", rootDevicePath)
+	err = handlers.MountDisk(rootDevicePath)
+	if err != nil {
+		fmt.Println("Error mounting disk:", err)
+		return
+	}
+
 	if *loadFlag != "" && *updateFlag {
 		fmt.Println("Both --load and --update flags cannot be used together.")
 		flag.Usage()
@@ -52,21 +67,70 @@ func run() {
 	}
 
 	if *loadFlag != "" {
-		fmt.Println("Loading configuration from", *loadFlag)
+		if !handlers.IsConfigurationChanged() {
+			fmt.Println("No configuration changes detected. Exiting.")
+			return
+		}
+
+		fmt.Println("Managing existing snapshots")
+		err = handlers.ManageSnapshots()
+		if err != nil {
+			fmt.Println("Error managing snapshots:", err)
+			return
+		}
+
+		fmt.Println("Loading and applying configuration from", *loadFlag)
 		err := applyConfigFile(*loadFlag)
 		if err != nil {
 			fmt.Println("Error applying configuration:", err)
+			return
 		}
-		return
-	}
 
-	if *updateFlag {
+		fmt.Println("Creating a new snapshot of the current state")
+		err = handlers.CreateNewSnapshot()
+		if err != nil {
+			fmt.Println("Error creating new snapshot:", err)
+			return
+		}
+
+	} else if *updateFlag {
 		fmt.Println("Updating services based on the configuration file")
-		err := handlers.UpdateServices(defaultConfigFilePath)
+		updatesMade, err := handlers.UpdateServices(defaultConfigFilePath)
 		if err != nil {
 			fmt.Println("Error updating services:", err)
 		}
 
+		if updatesMade {
+			fmt.Println("Managing existing snapshots")
+			err = handlers.ManageSnapshots()
+			if err != nil {
+				fmt.Println("Error managing snapshots:", err)
+				return
+			}
+
+			fmt.Println("Creating a new snapshot of the current state")
+			err = handlers.CreateNewSnapshot()
+			if err != nil {
+				fmt.Println("Error creating new snapshot:", err)
+				return
+			}
+		} else {
+			fmt.Println("No updates were made; skipping snapshot management.")
+		}
+		return
+	} else if *revertFlag {
+		fmt.Println("Reverting to the previous state")
+		err = handlers.RevertToPreviousState()
+		if err != nil {
+			fmt.Println("Error reverting to previous state:", err)
+			return
+		}
+	}
+
+	fmt.Println("Unmounting the disk from /mnt")
+	err = handlers.UnmountDisk()
+	if err != nil {
+		fmt.Println("Error unmounting disk:", err)
 		return
 	}
 }

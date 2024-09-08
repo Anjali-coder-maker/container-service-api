@@ -149,7 +149,7 @@ func createConfigFileIfNotExists() error {
 		}
 		defer file.Close()
 
-		defaultContent := `# Define services in the following format:		
+		defaultContent := `# Define services in the following format:
 # service.<service_name>.enable = true|false
 `
 		_, err = file.WriteString(defaultContent)
@@ -165,80 +165,59 @@ func applyConfigFile(filePath string) error {
 		return err
 	}
 
-	// Get the default services and registry templates
-	defaultCfg := config.GetConfig().Services
+	// Get the registry templates (which contains all services, including defaults)
 	registryTemplates := config.GetRegistryTemplates().Services
 
 	for service, enable := range userConfigurations {
-		// Check if the service is in the default configuration
-		if _, ok := defaultCfg[service]; ok {
-			fullServiceName := service + "-backend.service"
-			if enable {
-				err := handlers.EnableService(fullServiceName)
-				if err != nil {
-					fmt.Printf("Error enabling service %s: %v\n", fullServiceName, err)
-				} else {
-					fmt.Printf("Enabled %s successfully\n", fullServiceName)
-				}
-			} else {
-				err := handlers.DisableService(fullServiceName)
-				if err != nil {
-					fmt.Printf("Error disabling service %s: %v\n", fullServiceName, err)
-				} else {
-					fmt.Printf("Disabled %s successfully\n", fullServiceName)
-				}
-			}
+		// Check if the service is in the registry templates
+		template, exists := registryTemplates[service]
+		if !exists {
+			fmt.Printf("No service found in registry with name %s\n", service)
 			continue
 		}
 
-		// Service not found in default configuration, check if the image is already present
-		imageName := fmt.Sprintf("docker.io/ahaosv1/%s", service)
-		if !isImagePresent(imageName) {
-			fmt.Printf("Service %s is not available in the default services and image not found locally\n", service)
-			fmt.Println("Pulling the container in chroot environment")
-
-			// Pull the container in chroot environment
-			pulledImageName, res := handlers.PullImageChroot(service, mergeDirPath)
-			if res != nil {
-				fmt.Printf("Error pulling image %s: %v\n", pulledImageName, res.Error)
-				continue
-			}
-			imageName = pulledImageName
-
-			// Check if the service is in the registry templates
-			template, exists := registryTemplates[service]
-			if !exists {
-				fmt.Printf("No template found for service %s\n", service)
-				continue
-			}
-
-			// Prepare the serviceConfig using the registry template
-			serviceConfig := config.ServiceConfig{
-				Enabled:      enable,
-				ExecStart:    fmt.Sprintf("%s %s", template.ExecStart, imageName),
-				ExecStop:     template.ExecStop,
-				ExecStopPost: template.ExecStopPost,
-			}
-
-			err = handlers.CreateAndPlaceUnitFile(service, mergeDirPath, serviceConfig)
-			if err != nil {
-				fmt.Printf("Error creating unit file for service %s: %v\n", service, err)
-				continue
-			}
-
-			// Move everything from /overlay/upper to /
-			res = handlers.MoveOverlayUpperToRoot()
-			if res != nil {
-				fmt.Printf("Error moving overlay upper directory to root: %v\n", res.Error)
-				continue
-			}
-		} else {
-			fmt.Printf("Image for service %s found locally, skipping pull step\n", service)
-		}
-
-		// Enable or disable the service based on the user configuration
 		fullServiceName := service + "-backend.service"
+
 		if enable {
+			// If the service is required to be enabled, check if the image exists
+			imageName := fmt.Sprintf("docker.io/ahaosv1/%s", service)
+			if !isImagePresent(imageName) {
+				// Image not found, pulling the container and preparing the service
+				fmt.Printf("Image for service %s not found locally, pulling the image\n", service)
+
+				// Pull the container in chroot environment
+				pulledImageName, res := handlers.PullImageChroot(service, mergeDirPath)
+				if res != nil {
+					fmt.Printf("Error pulling image %s: %v\n", pulledImageName, res.Error)
+					continue
+				}
+				imageName = pulledImageName
+
+				// Prepare the serviceConfig using the registry template
+				serviceConfig := config.ServiceConfig{
+					Enabled:      enable,
+					ExecStart:    fmt.Sprintf("%s %s", template.ExecStart, imageName),
+					ExecStop:     template.ExecStop,
+					ExecStopPost: template.ExecStopPost,
+				}
+
+				err := handlers.CreateAndPlaceUnitFile(service, mergeDirPath, serviceConfig)
+				if err != nil {
+					fmt.Printf("Error creating unit file for service %s: %v\n", service, err)
+					continue
+				}
+
+				// Move everything from /overlay/upper to /
+				res = handlers.MoveOverlayUpperToRoot()
+				if res != nil {
+					fmt.Printf("Error moving overlay upper directory to root: %v\n", res.Error)
+					continue
+				}
+			} else {
+				fmt.Printf("Image for service %s found locally, skipping pull step\n", service)
+			}
+
+			// Enable the service
 			err := handlers.EnableService(fullServiceName)
 			if err != nil {
 				fmt.Printf("Error enabling service %s: %v\n", fullServiceName, err)
@@ -246,14 +225,16 @@ func applyConfigFile(filePath string) error {
 				fmt.Printf("Enabled %s successfully\n", fullServiceName)
 			}
 		} else {
+			// If the service is not required to be enabled, disable it
 			err := handlers.DisableService(fullServiceName)
 			if err != nil {
-				fmt.Printf("Error disabling service %s: %v\n", fullServiceName, err)
+				fmt.Printf("Not Disabling %s: %v\n", fullServiceName, err)
 			} else {
 				fmt.Printf("Disabled %s successfully\n", fullServiceName)
 			}
 		}
 	}
+
 	return nil
 }
 

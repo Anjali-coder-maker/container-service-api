@@ -25,6 +25,7 @@ type ServiceConfig struct {
 	ExecStart    string `json:"exec_start"`
 	ExecStop     string `json:"exec_stop"`
 	ExecStopPost string `json:"exec_stop_post"`
+	Privileged   bool   `json:"privileged"`
 }
 
 // Config represents the configuration file structure
@@ -34,9 +35,11 @@ type Config struct {
 
 // ServiceTemplate represents the template configuration for a registry service
 type ServiceTemplate struct {
+	Enabled      bool   `json:"enabled"`
 	ExecStart    string `json:"exec_start"`
 	ExecStop     string `json:"exec_stop"`
 	ExecStopPost string `json:"exec_stop_post"`
+	Privileged   bool   `json:"privileged"`
 }
 
 // RegistryTemplates represents the registry services structure

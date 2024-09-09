@@ -126,10 +126,13 @@ func CheckAndDisableExistingService(imageName string) bool {
 		log.Printf("Failed to disable service %s: %s\n", serviceFileName, disableResult.Error)
 	}
 
-	maskResult := utils.ExecuteCommand("systemctl", "mask", serviceFileName)
-	if maskResult.Error != "" {
-		log.Printf("Failed to mask service %s: %s\n", serviceFileName, disableResult.Error)
+	if !cfg.Services[imageName].Privileged {
+		maskResult := utils.ExecuteCommand("systemctl", "mask", serviceFileName)
+		if maskResult.Error != "" {
+			log.Printf("Failed to mask service %s: %s\n", serviceFileName, maskResult.Error)
+		}
 	}
+
 	daemonReloadResult := utils.ExecuteCommand("systemctl", "daemon-reload")
 	if daemonReloadResult.Error != "" {
 		log.Printf("Failed to reload daemon after disabling service %s: %s\n", serviceFileName, daemonReloadResult.Error)

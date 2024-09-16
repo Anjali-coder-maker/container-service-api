@@ -63,7 +63,7 @@ func checkAndUpdateService(service string) error {
 
 	if currentImageID == "" {
 		fmt.Printf("No running container found for service %s. The %s service is disabled. Container image will be automatically updated in the next run.\n", service, service)
-		return nil
+		return err
 	}
 
 	if currentImageID != latestImageID {

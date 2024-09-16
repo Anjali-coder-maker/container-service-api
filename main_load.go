@@ -72,12 +72,12 @@ func run() {
 			return
 		}
 
-		fmt.Println("Managing existing snapshots")
-		err = handlers.ManageSnapshots()
-		if err != nil {
-			fmt.Println("Error managing snapshots:", err)
-			return
-		}
+		// fmt.Println("Managing existing snapshots")
+		// err = handlers.ManageSnapshots()
+		// if err != nil {
+		// 	fmt.Println("Error managing snapshots:", err)
+		// 	return
+		// }
 
 		fmt.Println("Loading and applying configuration from", *loadFlag)
 		err := applyConfigFile(*loadFlag)
@@ -101,12 +101,12 @@ func run() {
 		}
 
 		if updatesMade {
-			fmt.Println("Managing existing snapshots")
-			err = handlers.ManageSnapshots()
-			if err != nil {
-				fmt.Println("Error managing snapshots:", err)
-				return
-			}
+			// fmt.Println("Managing existing snapshots")
+			// err = handlers.ManageSnapshots()
+			// if err != nil {
+			// 	fmt.Println("Error managing snapshots:", err)
+			// 	return
+			// }
 
 			fmt.Println("Creating a new snapshot of the current state")
 			err = handlers.CreateNewSnapshot()

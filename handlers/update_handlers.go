@@ -62,8 +62,7 @@ func checkAndUpdateService(service string) error {
 	}
 
 	if currentImageID == "" {
-		fmt.Printf("No running container found for service %s. The %s service is disabled. Container image will be automatically updated in the next run.\n", service, service)
-		return nil
+		return fmt.Errorf("No running container found for service %s. The %s service is disabled. Container image will be automatically updated in the next run.\n", service, service)
 	}
 
 	if currentImageID != latestImageID {
@@ -74,8 +73,7 @@ func checkAndUpdateService(service string) error {
 		return nil // Update happened
 	}
 
-	fmt.Printf("Service %s is already up-to-date\n", service)
-	return fmt.Errorf("no update required") // No update happened
+	return fmt.Errorf("Service %s is already up-to-date no update required", service) // No update happened
 }
 
 func restartService(service string) error {
@@ -107,7 +105,7 @@ func UpdateServices(filePath string) (bool, error) {
 	// check and update the services
 	for service := range userConfigurations {
 		if err := checkAndUpdateService(service); err != nil {
-			fmt.Printf("Error updating service %s: %v\n", service, err)
+			fmt.Printf("%s: %v\n", service, err)
 		} else {
 			anyUpdates = true
 		}

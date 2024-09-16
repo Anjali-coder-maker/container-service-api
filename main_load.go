@@ -213,8 +213,6 @@ func applyConfigFile(filePath string) error {
 					fmt.Printf("Error moving overlay upper directory to root: %v\n", res.Error)
 					continue
 				}
-			} else {
-				fmt.Printf("Image for service %s found locally, skipping pull step\n", service)
 			}
 
 			// Enable the service

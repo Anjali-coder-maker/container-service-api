@@ -162,9 +162,10 @@ func createConfigFileIfNotExists() error {
 func applyConfigFile(filePath string) error {
 	userConfigurations, err := handlers.ReadConfigurations(filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("error reading configurations from file %s: %v", filePath, err)
 	}
 
+	var daemonReloadNeeded bool
 	// Get the registry templates (which contains all services, including defaults)
 	registryTemplates := config.GetRegistryTemplates().Services
 
@@ -184,14 +185,13 @@ func applyConfigFile(filePath string) error {
 			if !isImagePresent(imageName) {
 				// Image not found, pulling the container and preparing the service
 				fmt.Printf("Image for service %s not found locally, pulling the image\n", service)
-
+				fmt.Println("from applyconfig", mergeDirPath)
 				// Pull the container in chroot environment
-				pulledImageName, res := handlers.PullImageChroot(service, mergeDirPath)
-				if res != nil {
-					fmt.Printf("Error pulling image %s: %v\n", pulledImageName, res.Error)
+				imageName, err := handlers.PullImageChroot(service, mergeDirPath)
+				if err != nil {
+					fmt.Printf("Error pulling image %s: %v\n", imageName, err)
 					continue
 				}
-				imageName = pulledImageName
 
 				// Prepare the serviceConfig using the registry template
 				serviceConfig := config.ServiceConfig{
@@ -201,38 +201,47 @@ func applyConfigFile(filePath string) error {
 					ExecStopPost: template.ExecStopPost,
 				}
 
-				err := handlers.CreateAndPlaceUnitFile(service, mergeDirPath, serviceConfig)
+				err = handlers.CreateAndPlaceUnitFile(service, mergeDirPath, serviceConfig)
 				if err != nil {
 					fmt.Printf("Error creating unit file for service %s: %v\n", service, err)
 					continue
 				}
 
 				// Move everything from /overlay/upper to /
-				res = handlers.MoveOverlayUpperToRoot()
-				if res != nil {
-					fmt.Printf("Error moving overlay upper directory to root: %v\n", res.Error)
+				err = handlers.MoveOverlayUpperToRoot()
+				if err != nil {
+					fmt.Printf("Error moving overlay upper directory to root: %v\n", err)
 					continue
 				}
+				daemonReloadNeeded = true
+			} else {
+				fmt.Printf("Image for service %s found locally, skipping pull step\n", service)
 			}
 
 			// Enable the service
 			err := handlers.EnableService(fullServiceName)
 			if err != nil {
 				fmt.Printf("Error enabling service %s: %v\n", fullServiceName, err)
-			} else {
-				fmt.Printf("Enabled %s successfully\n", fullServiceName)
 			}
 		} else {
 			// If the service is not required to be enabled, disable it
 			err := handlers.DisableService(fullServiceName)
 			if err != nil {
-				fmt.Printf("Not Disabling %s: %v\n", fullServiceName, err)
-			} else {
-				fmt.Printf("Disabled %s successfully\n", fullServiceName)
+				fmt.Printf("Error disabling %s: %v\n", fullServiceName, err)
 			}
 		}
 	}
 
+	// After all operations, reload daemon if needed
+	if daemonReloadNeeded {
+		resp := utils.ExecuteCommand("systemctl", "daemon-reload")
+		if resp.Error != "" {
+			return fmt.Errorf("error reloading daemon: %v", resp.Error)
+		}
+		fmt.Println("Systemd daemon reloaded.")
+	}
+
+	fmt.Println("Configuration applied successfully")
 	return nil
 }
 

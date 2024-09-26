@@ -3,29 +3,70 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"go-podman-api/utils"
 	"runtime"
 	"strings"
 )
 
-func getCurrentContainerImageID(service string) (string, error) {
-	containerName := fmt.Sprintf("%s-service-backend", service)
-	resp := utils.ExecuteCommand("podman", "inspect", "--format", "{{.Image}}", containerName)
+func getCurrentContainerImageDigest(service string) (string, error) {
+	arch := runtime.GOARCH
+	var tag string
+
+	if arch == "arm" || arch == "arm64" {
+		tag = "latest-arm"
+	} else {
+		tag = "latest-amd"
+	}
+
+	imageName := fmt.Sprintf("docker.io/ahaosv1/%s:%s", service, tag)
+	resp := utils.ExecuteCommand("podman", "images", "--format", "{{.Digest}}", imageName)
 
 	if strings.Contains(resp.Output, "no such object") {
-		// Container does not exist
+		// Container does not exist locally
 		return "", nil
 	}
 
 	if resp.Error != "" {
-		return "", fmt.Errorf("error inspecting container image for service %s: %v", service, resp.Error)
+		return "", fmt.Errorf("error getting local image digest for service %s: %v", service, resp.Error)
 	}
 
 	return strings.TrimSpace(resp.Output), nil
 }
 
-func getLatestImageID(service string) (string, error) {
+func getRemoteContainerImageDigest(service string) (string, error) {
+	arch := runtime.GOARCH
+	var tag string
+
+	if arch == "arm" || arch == "arm64" {
+		tag = "latest-arm"
+	} else {
+		tag = "latest-amd"
+	}
+
+	imageName := fmt.Sprintf("docker.io/ahaosv1/%s:%s", service, tag)
+	resp := utils.ExecuteCommand("skopeo", "inspect", fmt.Sprintf("docker://%s", imageName))
+
+	if resp.Error != "" {
+		return "", fmt.Errorf("error inspecting remote image for service %s: %v", service, resp.Error)
+	}
+
+	var result map[string]interface{}
+	err := json.Unmarshal([]byte(resp.Output), &result)
+	if err != nil {
+		return "", fmt.Errorf("error parsing skopeo output for service %s: %v", service, err)
+	}
+
+	digest, ok := result["Digest"].(string)
+	if !ok {
+		return "", fmt.Errorf("no digest found for remote image %s", service)
+	}
+
+	return digest, nil
+}
+
+func pullLatestImage(service string) (string, error) {
 	arch := runtime.GOARCH
 	var tag string
 
@@ -38,58 +79,65 @@ func getLatestImageID(service string) (string, error) {
 	imageName := fmt.Sprintf("docker.io/ahaosv1/%s:%s", service, tag)
 	resp := utils.ExecuteCommand("podman", "pull", imageName)
 	if resp.Error != "" {
-		return "", fmt.Errorf("Not able to pull the latest image for service %s: %v, Please check your internet connection and try again", service, resp.Error)
+		return "", fmt.Errorf("not able to pull the latest image for service %s: %v. please check your internet connection and try again", service, resp.Error)
 	}
 
-	// Get the image ID
-	resp = utils.ExecuteCommand("podman", "inspect", "--format", "{{.Id}}", imageName)
-	if resp.Error != "" {
-		return "", fmt.Errorf("error inspecting latest image for service %s: %v", service, resp.Error)
-	}
-
-	return strings.TrimSpace(resp.Output), nil
+	return fmt.Sprintf("Successfully pulled image %s", imageName), nil
 }
 
-func checkAndUpdateService(service string) error {
-	currentImageID, err := getCurrentContainerImageID(service)
+func checkAndUpdateService(service string, enabled bool) (bool, error) {
+	currentDigest, err := getCurrentContainerImageDigest(service)
 	if err != nil {
-		return fmt.Errorf("error getting current image ID for service %s: %v", service, err)
+		return false, fmt.Errorf("error getting current image digest for service %s: %v", service, err)
 	}
 
-	latestImageID, err := getLatestImageID(service)
+	remoteDigest, err := getRemoteContainerImageDigest(service)
 	if err != nil {
-		return err
+		return false, fmt.Errorf("error getting remote image digest for service %s: %v", service, err)
 	}
 
-	if currentImageID == "" {
-		fmt.Printf("No running container found for service %s. The %s service is disabled. Container image will be automatically updated in the next run.\n", service, service)
-		return err
+	// If service is disabled, there might be scenarios where the service unit file is not present so we do not do anything,
+	// updates will be done for the enabled services only
+	if !enabled {
+		// No update required for disabled services with an existing image
+		return false, nil
 	}
 
-	if currentImageID != latestImageID {
-		fmt.Printf("Updating service %s to the latest image\n", service)
+	// If the service is enabled, check if the container needs an update and restart the service if necessary.
+	if currentDigest != remoteDigest {
+		fmt.Printf("Updating enabled service %s to the latest image\n", service)
 		if err := restartService(service); err != nil {
-			return fmt.Errorf("error updating and restarting service %s: %v", service, err)
+			return false, fmt.Errorf("error updating and restarting service %s: %v", service, err)
 		}
-		return nil // Update happened
+		return true, nil // Update occurred
 	}
 
-	return fmt.Errorf("Service %s is already up-to-date no update required", service) // No update happened
+	// No update was required
+	return false, nil
 }
 
 func restartService(service string) error {
 	fullServiceName := fmt.Sprintf("%s-backend.service", service)
+
+	// Disable the service temporarily before updating
 	err := DisableService(fullServiceName)
 	if err != nil {
-		return err
+		return fmt.Errorf("error disabling service %s: %v", fullServiceName, err)
 	}
 
+	// Pull the latest image
+	_, err = pullLatestImage(service)
+	if err != nil {
+		return fmt.Errorf("error pulling the latest image for service %s: %v", service, err)
+	}
+
+	// Re-enable and restart the service
 	err = EnableService(fullServiceName)
 	if err != nil {
-		return err
+		return fmt.Errorf("error enabling service %s: %v", fullServiceName, err)
 	}
 
-	fmt.Printf("Service %s updated and restarted successfully\n", service)
+	fmt.Printf("Service %s updated and restarted successfully.\n", service)
 	return nil
 }
 
@@ -98,20 +146,28 @@ func UpdateServices(filePath string) (bool, error) {
 	// open the file and read the configurations
 	userConfigurations, err := ReadConfigurations(filePath)
 	if err != nil {
-		return false, fmt.Errorf("Error reading configurations from file %s: %v\n", filePath, err)
+		return false, fmt.Errorf("error reading configurations from file %s: %v", filePath, err)
 	}
 
 	anyUpdates := false
 
-	// check and update the services
-	for service := range userConfigurations {
-		if err := checkAndUpdateService(service); err != nil {
+	// Iterate over the services in the configuration file
+	for service, enabled := range userConfigurations {
+		updated, err := checkAndUpdateService(service, enabled)
+		if err != nil {
 			fmt.Printf("%s: %v\n", service, err)
-		} else {
+		}
+
+		// Track if any update has occurred
+		if updated {
 			anyUpdates = true
 		}
 	}
 
-	fmt.Println("Update completed")
+	if anyUpdates {
+		fmt.Println("Update completed, a snapshot is needed.")
+	} else {
+		fmt.Println("No updates were made, skipping snapshot.")
+	}
 	return anyUpdates, nil
 }

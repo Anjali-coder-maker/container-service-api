@@ -7,25 +7,14 @@ import (
 	"sync"
 )
 
-var (
-	//go:embed default-config.json registry-services.json
-	configFiles embed.FS
-
-	// config stores the configuration data
-	configData   Config
-	registryData RegistryTemplates
-
-	// once ensures the configuration is loaded only once
-	once sync.Once
-)
+//go:embed default-config.json registry-services.json
+var configFiles embed.FS
 
 // ServiceConfig represents the configuration for a service
 type ServiceConfig struct {
-	Enabled      bool   `json:"enabled"`
-	ExecStart    string `json:"exec_start"`
-	ExecStop     string `json:"exec_stop"`
-	ExecStopPost string `json:"exec_stop_post"`
-	Privileged   bool   `json:"privileged"`
+	Enabled    bool   `json:"enabled"`
+	UnitFile   string `json:"unit_file"`
+	Privileged bool   `json:"privileged"`
 }
 
 // Config represents the configuration file structure
@@ -35,11 +24,9 @@ type Config struct {
 
 // ServiceTemplate represents the template configuration for a registry service
 type ServiceTemplate struct {
-	Enabled      bool   `json:"enabled"`
-	ExecStart    string `json:"exec_start"`
-	ExecStop     string `json:"exec_stop"`
-	ExecStopPost string `json:"exec_stop_post"`
-	Privileged   bool   `json:"privileged"`
+	Enabled    bool   `json:"enabled"`
+	UnitFile   string `json:"unit_file"`
+	Privileged bool   `json:"privileged"`
 }
 
 // RegistryTemplates represents the registry services structure
@@ -47,7 +34,16 @@ type RegistryTemplates struct {
 	Services map[string]ServiceTemplate `json:"services"`
 }
 
-// init is called automatically to load the configuration file
+var (
+	// configData stores the configuration data
+	configData   Config
+	registryData RegistryTemplates
+
+	// once ensures the configuration is loaded only once
+	once sync.Once
+)
+
+// init is called automatically to load the configuration files
 func init() {
 	loadConfiguration()
 }

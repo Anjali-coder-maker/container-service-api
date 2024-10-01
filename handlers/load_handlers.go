@@ -4,19 +4,29 @@ package handlers
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"go-podman-api/config"
 	"go-podman-api/utils"
+	"html/template"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
 
-// GetServiceState parses the output of `systemctl list-unit-files` and returns "enabled" or "disabled"
+// GetServiceState parses the output of `systemctl list-unit-files` and returns "enabled", "disabled", or "not-found"
 func GetServiceState(service string) (string, error) {
 	// Run the systemctl list-unit-files command for the service
 	response := utils.ExecuteCommand("systemctl", "list-unit-files", service)
+
+	// Handle cases where systemctl exits with an error but lists "0 unit files found"
 	if response.Error != "" {
+		if strings.Contains(response.Output, "0 unit files listed") {
+			// Return "not-found" if no unit file exists for the service
+			return "not-found", nil
+		}
+		// If another error occurred, return it
 		return "", fmt.Errorf("error checking service state: %v", response.Error)
 	}
 
@@ -25,7 +35,6 @@ func GetServiceState(service string) (string, error) {
 	for _, line := range lines {
 		// The line should start with the service name, followed by its state (enabled/disabled)
 		if strings.HasPrefix(line, service) {
-			// Split the line and extract the state (second column)
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {
 				return fields[1], nil // Return the state (enabled/disabled)
@@ -33,7 +42,8 @@ func GetServiceState(service string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("could not find state for service %s", service)
+	// Return not-found if the service is not listed
+	return "not-found", nil
 }
 
 // DisableService stops and disables a service
@@ -41,6 +51,12 @@ func DisableService(service string) error {
 	state, err := GetServiceState(service)
 	if err != nil {
 		return fmt.Errorf("error retrieving service state: %v", err)
+	}
+
+	// Handle the case where the service unit file is not found
+	if state == "not-found" {
+		fmt.Printf("Service %s does not exist. No action needed.\n", service)
+		return nil
 	}
 
 	if state == "disabled" {
@@ -69,6 +85,12 @@ func EnableService(service string) error {
 	state, err := GetServiceState(service)
 	if err != nil {
 		return fmt.Errorf("error retrieving service state: %v", err)
+	}
+
+	// Handle the case where the service unit file is not found
+	if state == "not-found" {
+		fmt.Printf("Service %s does not exist. Please create the unit file first.\n", service)
+		return nil
 	}
 
 	if state == "enabled" {
@@ -124,42 +146,63 @@ func PullImageChroot(serviceName string, chrootpath string) (string, error) {
 
 // CreateAndPlaceUnitFile creates a systemd unit file and places it in the chroot directory
 func CreateAndPlaceUnitFile(serviceName, chrootDir string, serviceConfig config.ServiceConfig) error {
-	unitFileContent := fmt.Sprintf(`[Unit]
-Description=%s service
-After=network.target
+	if !serviceConfig.Enabled {
+		return fmt.Errorf("service %s is not enabled", serviceName)
+	}
 
-[Service]
-ExecStart=%s
-ExecStop=%s
-ExecStopPost=%s
+	// Determine the system architecture
+	arch := runtime.GOARCH
+	var tag string
 
-[Install]
-WantedBy=multi-user.target
-`, serviceName, serviceConfig.ExecStart, serviceConfig.ExecStop, serviceConfig.ExecStopPost)
+	// Set the tag based on the architecture
+	switch arch {
+	case "arm", "arm64":
+		tag = "latest-arm"
+	default:
+		tag = "latest-amd"
+	}
 
-	// Create a temporary file to hold the unit file content
-	tempUnitFile, err := os.CreateTemp("", fmt.Sprintf("%s-backend.service", serviceName))
+	// Construct the full image name
+	username := "ahaosv1"
+	image := fmt.Sprintf("docker.io/%s/%s:%s", username, serviceName, tag)
+
+	// Prepare the template
+	tmpl, err := template.New("unitFile").Parse(serviceConfig.UnitFile)
 	if err != nil {
-		return fmt.Errorf("failed to create temporary unit file: %v", err)
+		return fmt.Errorf("error parsing unit file template: %v", err)
 	}
-	defer os.Remove(tempUnitFile.Name()) // Clean up the temp file
-	defer tempUnitFile.Close()
 
-	// Write the unit file content to the temp file
-	_, err = tempUnitFile.WriteString(unitFileContent)
+	// Data to inject into the template
+	data := struct {
+		ImageName string
+	}{
+		ImageName: image,
+	}
+
+	// Execute the template
+	var unitFileBuffer bytes.Buffer
+	if err := tmpl.Execute(&unitFileBuffer, data); err != nil {
+		return fmt.Errorf("error executing unit file template: %v", err)
+	}
+
+	unitFileContent := unitFileBuffer.String()
+
+	// Define the target path within the chroot directory with the 'backend' suffix
+	unitFilePath := filepath.Join(chrootDir, "etc/systemd/system", fmt.Sprintf("%s-backend.service", serviceName))
+
+	// Ensure the target directory exists
+	err = os.MkdirAll(filepath.Dir(unitFilePath), 0755)
 	if err != nil {
-		return fmt.Errorf("failed to write to temporary unit file: %v", err)
+		return fmt.Errorf("failed to create directories for unit file: %v", err)
 	}
 
-	fmt.Printf("Created temporary unit file for %s at %s\n", serviceName, tempUnitFile.Name())
-
-	// Use the privileged service to move the unit file to /etc/systemd/system/
-	response := utils.ExecuteCommand("mv", tempUnitFile.Name(), fmt.Sprintf("/etc/systemd/system/%s-backend.service", serviceName))
-	if response.Error != "" {
-		return fmt.Errorf("failed to move unit file to /etc/systemd/system/: %v", response.Error)
+	// Write the unit file content
+	err = os.WriteFile(unitFilePath, []byte(unitFileContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write unit file: %v", err)
 	}
 
-	fmt.Printf("Moved unit file for %s to /etc/systemd/system/%s-backend.service\n", serviceName, serviceName)
+	fmt.Printf("Placed unit file for %s at %s\n", serviceName, unitFilePath)
 	return nil
 }
 

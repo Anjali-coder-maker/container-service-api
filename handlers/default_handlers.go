@@ -3,7 +3,9 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
 	"log"
 	"os"
 	"runtime"
@@ -51,57 +53,69 @@ func PullImage(imageName string) utils.CommandResponse {
 }
 
 // CreateUnitFile handles creating the systemd unit file for the container
-func CreateUnitFile(imageName string) utils.CommandResponse {
-	serviceConfig, exists := cfg.Services[imageName]
+func CreateUnitFile(serviceName string) utils.CommandResponse {
+	serviceConfig, exists := cfg.Services[serviceName]
 	if !exists {
-		return utils.CommandResponse{Error: fmt.Sprintf("Service %s not found in configuration", imageName)}
+		return utils.CommandResponse{Error: fmt.Sprintf("Service %s not found in configuration", serviceName)}
 	}
 
+	if !serviceConfig.Enabled {
+		return utils.CommandResponse{Error: fmt.Sprintf("Service %s is not enabled", serviceName)}
+	}
+
+	// Determine the system architecture
 	arch := runtime.GOARCH
 	var tag string
 
 	// Set the tag based on the architecture
-	if arch == "arm" || arch == "arm64" {
+	switch arch {
+	case "arm", "arm64":
 		tag = "latest-arm"
-	} else {
+	default:
 		tag = "latest-amd"
 	}
 
 	// Construct the full image name
 	username := "ahaosv1"
-	image := fmt.Sprintf("docker.io/%s/%s:%s", username, imageName, tag)
+	image := fmt.Sprintf("docker.io/%s/%s:%s", username, serviceName, tag)
 
-	// Update ExecStart command with the correct image
-	execStartCommand := fmt.Sprintf("%s %s", serviceConfig.ExecStart, image)
-
-	unitFileContent := fmt.Sprintf(`[Unit]
-Description=Podman container-%s-backend.service
-Documentation=man:podman-generate-systemd(1)
-Wants=network-online.target
-After=network-online.target
-RequiresMountsFor=%%t/containers
-
-[Service]
-Environment=PODMAN_SYSTEMD_UNIT=%%n
-Restart=on-failure
-ExecStart=%s
-ExecStop=%s
-ExecStopPost=%s
-TimeoutStopSec=70
-Type=simple
-NotifyAccess=all
-
-[Install]
-WantedBy=multi-user.target
-`, imageName, execStartCommand, serviceConfig.ExecStop, serviceConfig.ExecStopPost)
-
-	unitFilePath := fmt.Sprintf("/etc/systemd/system/%s-backend.service", imageName)
-
-	err := os.WriteFile(unitFilePath, []byte(unitFileContent), 0644)
+	// Prepare the template
+	tmpl, err := template.New("unitFile").Parse(serviceConfig.UnitFile)
 	if err != nil {
-		return utils.CommandResponse{Error: err.Error()}
+		return utils.CommandResponse{Error: fmt.Sprintf("Error parsing unit file template: %v", err)}
 	}
-	return utils.CommandResponse{Output: "Unit file created successfully"}
+
+	// Data to inject into the template
+	data := struct {
+		ImageName string
+	}{
+		ImageName: image,
+	}
+
+	// Execute the template
+	var unitFileBuffer bytes.Buffer
+	if err := tmpl.Execute(&unitFileBuffer, data); err != nil {
+		return utils.CommandResponse{Error: fmt.Sprintf("Error executing unit file template: %v", err)}
+	}
+
+	unitFileContent := unitFileBuffer.String()
+
+	// Define the unit file path with the 'backend' suffix
+	unitFilePath := fmt.Sprintf("/etc/systemd/system/%s-backend.service", serviceName)
+
+	// Write the unit file content to the systemd unit file
+	err = os.WriteFile(unitFilePath, []byte(unitFileContent), 0644)
+	if err != nil {
+		return utils.CommandResponse{Error: fmt.Sprintf("Error writing unit file: %v", err)}
+	}
+
+	// Reload systemd to recognize the new unit file
+	response := utils.ExecuteCommand("systemctl", "daemon-reload")
+	if response.Error != "" {
+		return utils.CommandResponse{Error: response.Error}
+	}
+
+	return utils.CommandResponse{Output: "Unit file created, and daemon-reload successfully"}
 }
 
 // checkAndDisableExistingService checks if a service is active and disables it if necessary
@@ -148,11 +162,6 @@ func EnableAndStartService(imageName string) utils.CommandResponse {
 	enableResult := utils.ExecuteCommand("systemctl", "enable", serviceFileName)
 	if enableResult.Error != "" {
 		return enableResult
-	}
-
-	daemonReloadResult := utils.ExecuteCommand("systemctl", "daemon-reload")
-	if daemonReloadResult.Error != "" {
-		return daemonReloadResult
 	}
 
 	return utils.ExecuteCommand("systemctl", "start", serviceFileName)

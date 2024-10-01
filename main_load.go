@@ -9,6 +9,7 @@ import (
 	"go-podman-api/handlers"
 	"go-podman-api/utils"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -160,6 +161,7 @@ func createConfigFileIfNotExists() error {
 
 // Apply the configuration file to the services
 func applyConfigFile(filePath string) error {
+	// Read the user-provided configurations from the given file
 	userConfigurations, err := handlers.ReadConfigurations(filePath)
 	if err != nil {
 		return fmt.Errorf("error reading configurations from file %s: %v", filePath, err)
@@ -181,26 +183,40 @@ func applyConfigFile(filePath string) error {
 
 		if enable {
 			// If the service is required to be enabled, check if the image exists
-			imageName := fmt.Sprintf("docker.io/ahaosv1/%s", service)
+			arch := runtime.GOARCH
+			var tag string
+
+			// Set the tag based on the architecture
+			switch arch {
+			case "arm", "arm64":
+				tag = "latest-arm"
+			default:
+				tag = "latest-amd"
+			}
+
+			// Construct the full image name
+			imageName := fmt.Sprintf("docker.io/ahaosv1/%s:%s", service, tag)
+
 			if !isImagePresent(imageName) {
 				// Image not found, pulling the container and preparing the service
 				fmt.Printf("Image for service %s not found locally, pulling the image\n", service)
-				fmt.Println("from applyconfig", mergeDirPath)
-				// Pull the container in chroot environment
+				fmt.Println("from applyConfigFile", mergeDirPath)
+
+				// Pull the container in the chroot environment
 				imageName, err := handlers.PullImageChroot(service, mergeDirPath)
 				if err != nil {
 					fmt.Printf("Error pulling image %s: %v\n", imageName, err)
 					continue
 				}
 
-				// Prepare the serviceConfig using the registry template
+				// Create a serviceConfig using the registry template and dynamic imageName
 				serviceConfig := config.ServiceConfig{
-					Enabled:      enable,
-					ExecStart:    fmt.Sprintf("%s %s", template.ExecStart, imageName),
-					ExecStop:     template.ExecStop,
-					ExecStopPost: template.ExecStopPost,
+					Enabled:    enable,
+					UnitFile:   template.UnitFile, // Keep the original unit file template
+					Privileged: template.Privileged,
 				}
 
+				// Place the service unit file in the appropriate location
 				err = handlers.CreateAndPlaceUnitFile(service, mergeDirPath, serviceConfig)
 				if err != nil {
 					fmt.Printf("Error creating unit file for service %s: %v\n", service, err)
@@ -213,12 +229,13 @@ func applyConfigFile(filePath string) error {
 					fmt.Printf("Error moving overlay upper directory to root: %v\n", err)
 					continue
 				}
+
 				daemonReloadNeeded = true
 			} else {
 				fmt.Printf("Image for service %s found locally, skipping pull step\n", service)
 			}
 
-			// Enable the service
+			// Enable the service using the full service name with the 'backend' suffix
 			err := handlers.EnableService(fullServiceName)
 			if err != nil {
 				fmt.Printf("Error enabling service %s: %v\n", fullServiceName, err)
@@ -232,7 +249,7 @@ func applyConfigFile(filePath string) error {
 		}
 	}
 
-	// After all operations, reload daemon if needed
+	// After all operations, reload the systemd daemon if needed
 	if daemonReloadNeeded {
 		resp := utils.ExecuteCommand("systemctl", "daemon-reload")
 		if resp.Error != "" {

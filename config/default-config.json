@@ -12,7 +12,12 @@
     },
     "packagekit": {
       "enabled": true,
-      "unit_file": "[Unit]\nDescription=PackageKit Daemon\nConditionPathExists=!/run/ostree-booted\nWants=network-online.target\n\n[Service]\nExecStart=/usr/bin/podman run --name packagekit-service-backend --privileged --ipc=host --net=host --pid=host -e HOST=/host -v /run:/run -v /var/log:/var/log -v /etc/localtime:/etc/localtime -v /:/host -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket -v /tmp:/tmp {{.ImageName}}\nExecStop=/usr/bin/podman stop -t 10 packagekit-service-backend\nExecStopPost=/usr/bin/podman rm -f packagekit-service-backend\nRestart=always\n\n[Install]\nWantedBy=multi-user.target",
+      "unit_file": "[Unit]\\nDescription=PackageKit Daemon\\nConditionPathExists=!/run/ostree-booted\\nWants=network-online.target\\n\\n[Service]\\nType=dbus\\nExecStart=/usr/bin/podman run --name packagekit-service-backend --privileged --ipc=host --net=host --pid=host -e HOST=/host -v /run:/run -v /var/log:/var/log -v /etc/localtime:/etc/localtime -v /:/host -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket -v /tmp:/tmp -v /etc/apt:/etc/apt:ro -v /var/lib/apt:/var/lib/apt:ro -v /var/cache/apt:/var/cache/apt --user root:root {{.ImageName}}\\nExecStop=/usr/bin/podman stop -t 10 packagekit-service-backend\\nExecStopPost=/usr/bin/podman rm -f packagekit-service-backend\\nRestart=always\\nBusName=org.freedesktop.PackageKit\\n\\n[Install]\\nWantedBy=multi-user.target",
+      "privileged": true
+    },
+    "wpa_supplicant": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=Containerized WPA Supplicant Service\nRequires=dbus.service\nAfter=network-pre.target dbus.service\nBefore=network.target shutdown.target\n\n[Service]\nType=dbus\nBusName=fi.w1.wpa_supplicant1\nExecStart=/usr/bin/podman run -it --name wpa_supplicant-service-backend --privileged \\\n  --cap-add=NET_ADMIN \\\n  --cap-add=NET_RAW \\\n  --device /dev/net/tun --network=host --pid=host --ipc=host \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /etc/wpa_supplicant:/etc/wpa_supplicant:ro \\\n  -v /run/wpa_supplicant:/run/wpa_supplicant \\\n  --user root:netdev {{.ImageName}}\nExecReload=/bin/kill -HUP $MAINPID\nExecStop=/usr/bin/podman stop wpa_supplicant-service-backend\nExecStopPost=/usr/bin/podman rm wpa_supplicant-service-backend \nGroup=netdev\nRuntimeDirectory=wpa_supplicant\nRuntimeDirectoryMode=0750\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": true
     }
   }

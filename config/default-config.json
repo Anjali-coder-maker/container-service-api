@@ -12,7 +12,7 @@
     },
     "packagekit": {
       "enabled": true,
-      "unit_file": "[Unit]\\nDescription=PackageKit Daemon\\nConditionPathExists=!/run/ostree-booted\\nWants=network-online.target\\n\\n[Service]\\nType=dbus\\nExecStart=/usr/bin/podman run --name packagekit-service-backend --privileged --ipc=host --net=host --pid=host -e HOST=/host -v /run:/run -v /var/log:/var/log -v /etc/localtime:/etc/localtime -v /:/host -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket -v /tmp:/tmp -v /etc/apt:/etc/apt:ro -v /var/lib/apt:/var/lib/apt:ro -v /var/cache/apt:/var/cache/apt --user root:root {{.ImageName}}\\nExecStop=/usr/bin/podman stop -t 10 packagekit-service-backend\\nExecStopPost=/usr/bin/podman rm -f packagekit-service-backend\\nRestart=always\\nBusName=org.freedesktop.PackageKit\\n\\n[Install]\\nWantedBy=multi-user.target",
+      "unit_file": "[Unit]\nDescription=PackageKit Daemon\nConditionPathExists=!/run/ostree-booted\nWants=network-online.target\n\n[Service]\nType=dbus\nExecStart=/usr/bin/podman run --name packagekit-service-backend --privileged --ipc=host --net=host --pid=host -e HOST=/host -v /run:/run -v /var/log:/var/log -v /etc/localtime:/etc/localtime -v /:/host -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket -v /tmp:/tmp -v /etc/apt:/etc/apt:ro -v /var/lib/apt:/var/lib/apt:ro -v /var/cache/apt:/var/cache/apt:ro --user root:root {{.ImageName}}\nExecStop=/usr/bin/podman stop -t 10 packagekit-service-backend\nExecStopPost=/usr/bin/podman rm -f packagekit-service-backend\nRestart=always\nBusName=org.freedesktop.PackageKit\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": true
     },
     "wpa_supplicant": {

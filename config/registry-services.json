@@ -24,6 +24,11 @@
       "enabled": false,
       "unit_file": "[Unit]\nDescription=Containerized WPA Supplicant Service\nRequires=dbus.service\nAfter=network-pre.target dbus.service\nBefore=network.target shutdown.target\n\n[Service]\nType=dbus\nBusName=fi.w1.wpa_supplicant1\nExecStart=/usr/bin/podman run -it --name wpa_supplicant-service-backend --privileged \\\n  --cap-add=NET_ADMIN \\\n  --cap-add=NET_RAW \\\n  --device /dev/net/tun --network=host --pid=host --ipc=host \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /etc/wpa_supplicant:/etc/wpa_supplicant:ro \\\n  -v /run/wpa_supplicant:/run/wpa_supplicant \\\n  --user root:netdev {{.ImageName}}\nExecReload=/bin/kill -HUP $MAINPID\nExecStop=/usr/bin/podman stop wpa_supplicant-service-backend\nExecStopPost=/usr/bin/podman rm wpa_supplicant-service-backend \nGroup=netdev\nRuntimeDirectory=wpa_supplicant\nRuntimeDirectoryMode=0750\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": true
+    },
+    "power-profiles-daemon": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=Power Profiles Daemon Backend New (Container)\nConflicts=tuned.service tlp.service auto-cpufreq.service system76-power.service\nBefore=multi-user.target display-manager.target\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=net.hadess.PowerProfiles\nEnvironment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket\n\n# Run the container in the foreground\nExecStart=/usr/bin/podman run \\\n  --name power-profiles-daemon-backend \\\n  --privileged \\\n  --network=host \\\n  -v /sys:/sys \\\n  -v /proc:/proc \\\n  -v /dev:/dev \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /run/udev:/run/udev \\\n  -v /var/lib/power-profiles-daemon:/var/lib/power-profiles-daemon \\\n  {{.ImageName}}\n\n# Stop and remove the container on service stop\nExecStop=/usr/bin/podman stop power-profiles-daemon-backend\nExecStopPost=-/usr/bin/podman rm -f power-profiles-daemon-backend\n\nRestart=on-failure\nStateDirectory=power-profiles-daemon\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=graphical.target",
+      "privileged": true
     }
   }
 }

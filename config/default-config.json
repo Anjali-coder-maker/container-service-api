@@ -24,6 +24,11 @@
             "enabled": true,
             "unit_file": "[Unit]\nDescription=ALSA Restore Container\nDocumentation=man:alsactl(1)\nConditionPathExists=!/etc/alsa/state-daemon.conf\nConditionPathExistsGlob=/dev/snd/control*\nAfter=alsa-state.service\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStartPre=-/usr/bin/podman rm alsa-restore-backend\nExecStart=/usr/bin/podman run -d --name alsa-restore-backend --privileged --restart=always --volume /dev/snd:/dev/snd:rw --volume /var/lib/alsa:/var/lib/alsa:rw --volume /etc/alsa:/etc/alsa:rw --volume /usr/share/alsa/alsa.conf.d:/usr/share/alsa/alsa.conf.d:ro {{.ImageName}}\nExecStop=/usr/bin/podman stop alsa-restore-backend\n\n[Install]\nWantedBy=multi-user.target",
             "privileged": true
+        },
+    "upower-backend": {
+            "enabled": true,
+            "unit_file": "[Unit]\nDescription=UPower Service (Containerized)\nDocumentation=man:podman(1)\nAfter=graphical.target dbus.socket\nRequires=dbus.socket\n\n[Service]\nType=dbus\nBusName=org.freedesktop.UPower\nRestart=always\nExecStartPre=-/usr/bin/podman stop upower-backend\nExecStartPre=-/usr/bin/podman rm upower-backend\nExecStart=/usr/bin/podman run --name upower-backend --privileged \\\n    --volume /run/dbus:/run/dbus:rw \\\n    --volume /var/lib/upower:/var/lib/upower:rw \\\n    --tmpfs /tmp:rw,size=65536k \\\n    {{.ImageName}}\nExecStop=/usr/bin/podman stop upower-backend\nExecStopPost=/usr/bin/podman rm upower-backend\n\n# Relax security settings\nProtectSystem=off\nProtectHome=off\nProtectKernelTunables=off\nProtectControlGroups=off\nPrivateTmp=false\nNoNewPrivileges=false\nSystemCallFilter=\n\n[Install]\nWantedBy=graphical.target",
+            "privileged": true
         }
   }
 }

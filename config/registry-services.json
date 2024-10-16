@@ -1,17 +1,17 @@
 {
   "services": {
     "nginx": {
-      "enabled": false,
+      "enabled": true,
       "unit_file": "[Unit]\nDescription=NGINX Service\nAfter=network.target\n\n[Service]\nExecStart=/usr/bin/podman run --name nginx-service-backend -p 8080:80 {{.ImageName}}\nExecStop=/usr/bin/podman stop -t 10 nginx-service-backend\nExecStopPost=/usr/bin/podman rm -f nginx-service-backend\nRestart=always\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": false
     },
     "cups": {
-      "enabled": false,
+      "enabled": true,
       "unit_file": "[Unit]\nDescription=CUPS Scheduler\nAfter=network.target\n\n[Service]\nExecStart=/usr/bin/podman run --name cups-service-backend -p 631:631 {{.ImageName}}\nExecStop=/usr/bin/podman stop -t 10 cups-service-backend\nExecStopPost=/usr/bin/podman rm -f cups-service-backend\nRestart=always\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": false
     },
     "cron": {
-      "enabled": false,
+      "enabled": true,
       "unit_file": "[Unit]\nDescription=Cron Service\nAfter=remote-fs.target\n\n[Service]\nExecStart=/usr/bin/podman run --name cron-service-backend -v /etc/cron.daily:/etc/cron.daily -v /etc/cron.weekly:/etc/cron.weekly -v /etc/cron.monthly:/etc/cron.monthly {{.ImageName}}\nExecStop=/usr/bin/podman stop -t 10 cron-service-backend\nExecStopPost=/usr/bin/podman rm -f cron-service-backend\nRestart=always\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": false
     },
@@ -21,25 +21,29 @@
       "privileged": true
     },
     "wpa_supplicant": {
-      "enabled": false,
+      "enabled": true,
       "unit_file": "[Unit]\nDescription=Containerized WPA Supplicant Service\nRequires=dbus.service\nAfter=network-pre.target dbus.service\nBefore=network.target shutdown.target\n\n[Service]\nType=dbus\nBusName=fi.w1.wpa_supplicant1\nExecStart=/usr/bin/podman run -it --name wpa_supplicant-service-backend --privileged \\\n  --cap-add=NET_ADMIN \\\n  --cap-add=NET_RAW \\\n  --device /dev/net/tun --network=host --pid=host --ipc=host \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /etc/wpa_supplicant:/etc/wpa_supplicant:ro \\\n  -v /run/wpa_supplicant:/run/wpa_supplicant \\\n  --user root:netdev {{.ImageName}}\nExecReload=/bin/kill -HUP $MAINPID\nExecStop=/usr/bin/podman stop wpa_supplicant-service-backend\nExecStopPost=/usr/bin/podman rm wpa_supplicant-service-backend \nGroup=netdev\nRuntimeDirectory=wpa_supplicant\nRuntimeDirectoryMode=0750\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": true
     },
     "power-profiles-daemon": {
       "enabled": true,
-      "unit_file": "[Unit]\nDescription=Power Profiles Daemon Backend New (Container)\nConflicts=tuned.service tlp.service auto-cpufreq.service system76-power.service\nBefore=multi-user.target display-manager.target\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=net.hadess.PowerProfiles\nEnvironment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket\n\n# Run the container in the foreground\nExecStart=/usr/bin/podman run \\\n  --name power-profiles-daemon-backend \\\n  --privileged \\\n  --network=host \\\n  -v /sys:/sys \\\n  -v /proc:/proc \\\n  -v /dev:/dev \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /run/udev:/run/udev \\\n  -v /var/lib/power-profiles-daemon:/var/lib/power-profiles-daemon \\\n  {{.ImageName}}\n\n# Stop and remove the container on service stop\nExecStop=/usr/bin/podman stop power-profiles-daemon-backend\nExecStopPost=-/usr/bin/podman rm -f power-profiles-daemon-backend\n\nRestart=on-failure\nStateDirectory=power-profiles-daemon\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=graphical.target",
+      "unit_file": "[Unit]\nDescription=Power Profiles Daemon Backend New (Container)\nConflicts=tuned.service tlp.service auto-cpufreq.service system76-power.service\nBefore=multi-user.target display-manager.target\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=net.hadess.PowerProfiles\nEnvironment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket\n\n# Run the container in the foreground\nExecStart=/usr/bin/podman run --name power-profiles-daemon-service-backend --privileged \\\n  --network=host \\\n  -v /sys:/sys \\\n  -v /proc:/proc \\\n  -v /dev:/dev \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /run/udev:/run/udev \\\n  -v /var/lib/power-profiles-daemon:/var/lib/power-profiles-daemon \\\n  {{.ImageName}}\n\nExecStop=/usr/bin/podman stop power-profiles-daemon-service-backend\nExecStopPost=/usr/bin/podman rm -f power-profiles-daemon-service-backend\n\nRestart=on-failure\nStateDirectory=power-profiles-daemon\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=graphical.target",
       "privileged": true
     },
     "alsa-restore": {
-            "enabled": true,
-            "unit_file": "[Unit]\nDescription=ALSA Restore Container\nDocumentation=man:alsactl(1)\nConditionPathExists=!/etc/alsa/state-daemon.conf\nConditionPathExistsGlob=/dev/snd/control*\nAfter=alsa-state.service\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStartPre=-/usr/bin/podman rm alsa-restore-backend\nExecStart=/usr/bin/podman run -d --name alsa-restore-backend --privileged --restart=always --volume /dev/snd:/dev/snd:rw --volume /var/lib/alsa:/var/lib/alsa:rw --volume /etc/alsa:/etc/alsa:rw --volume /usr/share/alsa/alsa.conf.d:/usr/share/alsa/alsa.conf.d:ro {{.ImageName}}\nExecStop=/usr/bin/podman stop alsa-restore-backend\n\n[Install]\nWantedBy=multi-user.target",
-            "privileged": true
-        },
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=ALSA Restore Container\nDocumentation=man:alsactl(1)\nConditionPathExists=!/etc/alsa/state-daemon.conf\nConditionPathExistsGlob=/dev/snd/control*\nAfter=alsa-state.service\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/usr/bin/podman run -d --name alsa-restore-service-backend --privileged --volume /dev/snd:/dev/snd:rw --volume /var/lib/alsa:/var/lib/alsa:rw --volume /etc/alsa:/etc/alsa:rw --volume /usr/share/alsa/alsa.conf.d:/usr/share/alsa/alsa.conf.d:ro {{.ImageName}}\nExecStop=/usr/bin/podman stop alsa-restore-service-backend\nExecStopPost=/usr/bin/podman rm alsa-restore-service-backend\n\n[Install]\nWantedBy=multi-user.target",
+      "privileged": true
+    },
     "upower": {
-            "enabled": true,
-            "unit_file": "[Unit]\nDescription=UPower Service (Containerized)\nDocumentation=man:podman(1)\nAfter=graphical.target dbus.socket\nRequires=dbus.socket\n\n[Service]\nType=dbus\nBusName=org.freedesktop.UPower\nRestart=always\nExecStartPre=-/usr/bin/podman stop upower-backend\nExecStartPre=-/usr/bin/podman rm upower-backend\nExecStart=/usr/bin/podman run --name upower-backend --privileged \\\n    --volume /run/dbus:/run/dbus:rw \\\n    --volume /var/lib/upower:/var/lib/upower:rw \\\n    --tmpfs /tmp:rw,size=65536k \\\n    {{.ImageName}}\nExecStop=/usr/bin/podman stop upower-backend\nExecStopPost=/usr/bin/podman rm upower-backend\n\n# Relax security settings\nProtectSystem=off\nProtectHome=off\nProtectKernelTunables=off\nProtectControlGroups=off\nPrivateTmp=false\nNoNewPrivileges=false\nSystemCallFilter=\n\n[Install]\nWantedBy=graphical.target",
-            "privileged": true
-        }
-
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=UPower Service (Containerized)\nDocumentation=man:podman(1)\nAfter=graphical.target dbus.socket\nRequires=dbus.socket\n\n[Service]\nType=dbus\nBusName=org.freedesktop.UPower\nRestart=always\nExecStart=/usr/bin/podman run --name upower-service-backend --privileged \\\n    --volume /run/dbus:/run/dbus:rw \\\n    --volume /var/lib/upower:/var/lib/upower:rw \\\n    --tmpfs /tmp:rw,size=65536k \\\n    {{.ImageName}}\nExecStop=/usr/bin/podman stop upower-service-backend \nExecStopPost=/usr/bin/podman rm upower-service-backend\n\n# Relax security settings\nProtectSystem=off\nProtectHome=off\nProtectKernelTunables=off\nProtectControlGroups=off\nPrivateTmp=false\nNoNewPrivileges=false\nSystemCallFilter=\n\n[Install]\nWantedBy=graphical.target",
+      "privileged": true
+    },
+    "samba": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=Samba SMB Daemon (Containerized)\nDocumentation=man:smbd(8) man:samba(7) man:smb.conf(5)\nWants=network-online.target\nAfter=network.target network-online.target\n\n[Service]\nType=notify\nPIDFile=/run/samba/smbd.pid\nLimitNOFILE=16384\nExecStart=/usr/bin/podman run --name samba-service-backend --privileged --net=host --volume /srv/samba:/srv/samba --volume /etc/samba:/etc/samba --volume /run/dbus/system_bus_socket:/run/dbus/system_bus_socket {{.ImageName}}\nExecStop=/usr/bin/podman stop samba-service-backend\nExecStopPost=/usr/bin/podman rm -f samba-service-backend\nLimitCORE=infinity\n\n[Install]\nWantedBy=multi-user.target\nAlias=smb.service",
+      "privileged": true
+    }
   }
 }

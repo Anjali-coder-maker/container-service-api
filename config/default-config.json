@@ -34,6 +34,11 @@
       "enabled": true,
       "unit_file": "[Unit]\nDescription=Power Profiles Daemon Backend New (Container)\nConflicts=tuned.service tlp.service auto-cpufreq.service system76-power.service\nBefore=multi-user.target display-manager.target\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=net.hadess.PowerProfiles\nEnvironment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket\n\n# Run the container in the foreground\nExecStart=/usr/bin/podman run --name power-profiles-daemon-service-backend --privileged \\\n  --network=host \\\n  -v /sys:/sys \\\n  -v /proc:/proc \\\n  -v /dev:/dev \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /run/udev:/run/udev \\\n  -v /var/lib/power-profiles-daemon:/var/lib/power-profiles-daemon \\\n  {{.ImageName}}\n\nExecStop=/usr/bin/podman stop power-profiles-daemon-service-backend\nExecStopPost=/usr/bin/podman rm -f power-profiles-daemon-service-backend\n\nRestart=on-failure\nStateDirectory=power-profiles-daemon\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=graphical.target",
       "privileged": true
+    },
+    "udisks2": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=UDisks2 Backend Container\nDocumentation=man:udisks(8)\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=org.freedesktop.UDisks2\nKillSignal=SIGINT\nExecStart=/usr/bin/podman run --name udisks2-backend --privileged --rm \\\n  --net=host \\\n  -v /dev:/dev \\\n  -v /run/udev:/run/udev:ro \\\n  -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop udisks2-backend\nExecStopPost=/usr/bin/podman rm udisks2-backend\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=graphical.target",
+      "privileged": true
     }
   }
 }

@@ -44,6 +44,11 @@
       "enabled": true,
       "unit_file": "[Unit]\nDescription=Samba SMB Daemon (Containerized)\nDocumentation=man:smbd(8) man:samba(7) man:smb.conf(5)\nWants=network-online.target\nAfter=network.target network-online.target\n\n[Service]\nType=notify\nPIDFile=/run/samba/smbd.pid\nLimitNOFILE=16384\nExecStart=/usr/bin/podman run --name samba-service-backend --privileged --net=host --volume /srv/samba:/srv/samba --volume /etc/samba:/etc/samba --volume /run/dbus/system_bus_socket:/run/dbus/system_bus_socket {{.ImageName}}\nExecStop=/usr/bin/podman stop samba-service-backend\nExecStopPost=/usr/bin/podman rm -f samba-service-backend\nLimitCORE=infinity\n\n[Install]\nWantedBy=multi-user.target\nAlias=smb.service",
       "privileged": true
+    },
+    "udisks2": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=UDisks2 Backend Container\nDocumentation=man:udisks(8)\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=org.freedesktop.UDisks2\nKillSignal=SIGINT\nExecStart=/usr/bin/podman run --name udisks2-backend --privileged --rm \\\n  --net=host \\\n  -v /dev:/dev \\\n  -v /run/udev:/run/udev:ro \\\n  -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop udisks2-backend\nExecStopPost=/usr/bin/podman rm udisks2-backend\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=graphical.target",
+      "privileged": true
     }
   }
 }

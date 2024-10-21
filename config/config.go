@@ -15,6 +15,8 @@ type ServiceConfig struct {
 	Enabled    bool   `json:"enabled"`
 	UnitFile   string `json:"unit_file"`
 	Privileged bool   `json:"privileged"`
+	DbusName   string `json:"dbus_name"` // Field for the D-Bus service name
+	DbusFile   string `json:"dbus_file"` // Field for the content of the D-Bus service file
 }
 
 // Config represents the configuration file structure
@@ -27,6 +29,8 @@ type ServiceTemplate struct {
 	Enabled    bool   `json:"enabled"`
 	UnitFile   string `json:"unit_file"`
 	Privileged bool   `json:"privileged"`
+	DbusName   string `json:"dbus_name"` // Field for the D-Bus service name
+	DbusFile   string `json:"dbus_file"` // Field for the content of the D-Bus service file
 }
 
 // RegistryTemplates represents the registry services structure

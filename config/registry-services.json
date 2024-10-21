@@ -47,7 +47,14 @@
     },
     "udisks2": {
       "enabled": true,
-      "unit_file": "[Unit]\nDescription=UDisks2 Backend Container\nDocumentation=man:udisks(8)\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=org.freedesktop.UDisks2\nKillSignal=SIGINT\nExecStart=/usr/bin/podman run --name udisks2-backend --privileged --rm \\\n  --net=host \\\n  -v /dev:/dev \\\n  -v /run/udev:/run/udev:ro \\\n  -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop udisks2-backend\nExecStopPost=/usr/bin/podman rm udisks2-backend\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=graphical.target",
+      "unit_file": "[Unit]\nDescription=UDisks2 Backend Container\nDocumentation=man:udisks(8)\nAfter=network.target\n\n[Service]\nType=dbus\nBusName=org.freedesktop.UDisks2\nKillSignal=SIGINT\nExecStart=/usr/bin/podman run --name udisks2-service-backend --privileged --rm \\\n  --net=host \\\n  -v /dev:/dev \\\n  -v /run/udev:/run/udev:ro \\\n  -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop udisks2-service-backend\nExecStopPost=/usr/bin/podman rm udisks2-service-backend \nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=graphical.target",
+      "privileged": true
+    },
+    "fwupd": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=Firmware update daemon (Podman Container)\nDocumentation=https://fwupd.org/\nAfter=dbus.service\nBefore=display-manager.service\nConditionVirtualization=!container\n\n[Service]\nType=dbus\nBusName=org.freedesktop.fwupd\nTimeoutSec=180\nRuntimeDirectory=motd.d\nRuntimeDirectoryPreserve=yes\nExecStart=/usr/bin/podman run --detach --name fwupd-service-backend \\\n  --privileged \\\n  --network=host \\\n  -v /dev:/dev \\\n  -v /boot:/boot:ro \\\n  -v /boot/efi:/boot/efi:ro \\\n  -v /sys:/sys:rw \\\n  -v /run/dbus:/run/dbus \\\n  -v /var/lib/fwupd:/var/lib/fwupd \\\n  -e DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \\\n  {{.ImageName}} sh -c \"/usr/libexec/fwupd/fwupd --verbose; sleep infinity\"\nExecStop=/usr/bin/podman stop fwupd\nExecStopPost=/usr/bin/podman rm fwupd\nPrivateTmp=yes\nProtectHome=yes\nProtectSystem=full\nEnvironment=\"GLIBC_TUNABLES=glibc.cpu.hwcaps=SHSTK\"\nReadWritePaths=-/boot/efi -/efi/EFI -/boot/EFI -/boot/grub\nConfigurationDirectory=fwupd\nStateDirectory=fwupd\nCacheDirectory=fwupd\nRestrictAddressFamilies=AF_NETLINK AF_UNIX AF_INET AF_INET6\n\n[Install]\nWantedBy=multi-user.target",
+      "dbus_name": "org.freedesktop.fwupd",
+      "dbus_file": "[D-BUS Service]\nName=org.freedesktop.fwupd\nDocumentation=https://fwupd.org/\nExec=/usr/libexec/fwupd/fwupd\nUser=root\nSystemdService=fwupd-backend.service\nAssumedAppArmorLabel=unconfined",
       "privileged": true
     }
   }

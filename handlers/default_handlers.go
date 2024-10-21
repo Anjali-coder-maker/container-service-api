@@ -79,20 +79,20 @@ func CreateUnitFile(serviceName string) utils.CommandResponse {
 	username := "ahaosv1"
 	image := fmt.Sprintf("docker.io/%s/%s:%s", username, serviceName, tag)
 
-	// Prepare the template
+	// Prepare the systemd unit file template
 	tmpl, err := template.New("unitFile").Parse(serviceConfig.UnitFile)
 	if err != nil {
 		return utils.CommandResponse{Error: fmt.Sprintf("Error parsing unit file template: %v", err)}
 	}
 
-	// Data to inject into the template
+	// Data to inject into the templates
 	data := struct {
 		ImageName string
 	}{
 		ImageName: image,
 	}
 
-	// Execute the template
+	// Execute the systemd unit file template
 	var unitFileBuffer bytes.Buffer
 	if err := tmpl.Execute(&unitFileBuffer, data); err != nil {
 		return utils.CommandResponse{Error: fmt.Sprintf("Error executing unit file template: %v", err)}
@@ -100,13 +100,22 @@ func CreateUnitFile(serviceName string) utils.CommandResponse {
 
 	unitFileContent := unitFileBuffer.String()
 
-	// Define the unit file path with the 'backend' suffix
+	// Define the systemd unit file path
 	unitFilePath := fmt.Sprintf("/etc/systemd/system/%s-backend.service", serviceName)
 
-	// Write the unit file content to the systemd unit file
+	// Write the systemd unit file
 	err = os.WriteFile(unitFilePath, []byte(unitFileContent), 0644)
 	if err != nil {
 		return utils.CommandResponse{Error: fmt.Sprintf("Error writing unit file: %v", err)}
+	}
+
+	// Check and write the D-Bus service file if available
+	if serviceConfig.DbusFile != "" && serviceConfig.DbusName != "" {
+		dbusFilePath := fmt.Sprintf("/usr/share/dbus-1/system-services/%s.service", serviceConfig.DbusName)
+		err = os.WriteFile(dbusFilePath, []byte(serviceConfig.DbusFile), 0644)
+		if err != nil {
+			return utils.CommandResponse{Error: fmt.Sprintf("Error writing D-Bus service file: %v", err)}
+		}
 	}
 
 	// Reload systemd to recognize the new unit file
@@ -115,7 +124,7 @@ func CreateUnitFile(serviceName string) utils.CommandResponse {
 		return utils.CommandResponse{Error: response.Error}
 	}
 
-	return utils.CommandResponse{Output: "Unit file created, and daemon-reload successfully"}
+	return utils.CommandResponse{Output: "Systemd unit and D-Bus service files created, and daemon-reload successfully"}
 }
 
 // checkAndDisableExistingService checks if a service is active and disables it if necessary

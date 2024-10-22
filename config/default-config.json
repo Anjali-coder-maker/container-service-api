@@ -22,7 +22,7 @@
     },
     "alsa-restore": {
       "enabled": true,
-      "unit_file": "[Unit]\nDescription=ALSA Restore Container\nDocumentation=man:alsactl(1)\nConditionPathExists=!/etc/alsa/state-daemon.conf\nConditionPathExistsGlob=/dev/snd/control*\nAfter=alsa-state.service\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/usr/bin/podman run -d --name alsa-restore-service-backend --privileged --restart=always --volume /dev/snd:/dev/snd:rw --volume /var/lib/alsa:/var/lib/alsa:rw --volume /etc/alsa:/etc/alsa:rw --volume /usr/share/alsa/alsa.conf.d:/usr/share/alsa/alsa.conf.d:ro {{.ImageName}}\nExecStop=/usr/bin/podman stop alsa-restore-service-backend\nExecStopPost=/usr/bin/podman rm alsa-restore-service-backend\n\n[Install]\nWantedBy=multi-user.target",
+      "unit_file": "[Unit]\nDescription=ALSA Restore Container\nDocumentation=man:alsactl(1)\nConditionPathExists=!/etc/alsa/state-daemon.conf\nConditionPathExistsGlob=/dev/snd/control*\nAfter=alsa-state.service\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/usr/bin/podman run -d --name alsa-restore-service-backend --privileged --volume /dev/snd:/dev/snd:rw --volume /var/lib/alsa:/var/lib/alsa:rw --volume /etc/alsa:/etc/alsa:rw --volume /usr/share/alsa/alsa.conf.d:/usr/share/alsa/alsa.conf.d:ro {{.ImageName}}\nExecStop=/usr/bin/podman stop alsa-restore-service-backend\nExecStopPost=/usr/bin/podman rm alsa-restore-service-backend\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": true
     },
     "upower": {

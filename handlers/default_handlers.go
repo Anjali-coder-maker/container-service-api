@@ -156,6 +156,14 @@ func CheckAndDisableExistingService(imageName string) bool {
 		}
 	}
 
+	// if avahi-daemon is present in the config then mask the socket file
+	if serviceFileName == "avahi-daemon.service" {
+		maskResult := utils.ExecuteCommand("systemctl", "mask", "avahi-daemon.socket")
+		if maskResult.Error != "" {
+			log.Printf("Failed to mask avahi-daemon.socket: %s\n", maskResult.Error)
+		}
+	}
+
 	daemonReloadResult := utils.ExecuteCommand("systemctl", "daemon-reload")
 	if daemonReloadResult.Error != "" {
 		log.Printf("Failed to reload daemon after disabling service %s: %s\n", serviceFileName, daemonReloadResult.Error)

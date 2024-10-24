@@ -56,6 +56,11 @@
       "enabled": true,
       "unit_file": "[Unit]\nDescription=Low Memory Monitor Container\nConditionPathExists=/proc/pressure\nAfter=sysinit.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/podman run --name low-memory-monitor-service-backend \\\n  --privileged \\\n  --pid=host \\\n  --cgroupns=host \\\n  --ipc=host \\\n  --cap-add=ALL \\\n  --security-opt=seccomp=unconfined \\\n  --security-opt=apparmor=unconfined \\\n  -v /proc/pressure:/proc/pressure \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /sys/fs/cgroup:/sys/fs/cgroup \\\n  -v /dev:/dev:ro \\\n  -v /etc/low-memory-monitor.conf:/etc/low-memory-monitor.conf:ro \\\n  -e G_MESSAGES_DEBUG=all \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop low-memory-monitor-service-backend\nExecStopPost=/usr/bin/podman rm low-memory-monitor-service-backend\nRestart=on-failure\nEnvironment=\"G_MESSAGES_DEBUG=all\"\n\n# CPU Scheduling\nCPUSchedulingPolicy=fifo\nCPUSchedulingPriority=1\n\n[Install]\nWantedBy=basic.target",
       "privileged": true
+    },
+    "bluetooth-service": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=Bluetooth service (Containerized)\nDocumentation=man:bluetoothd(8)\nConditionPathIsDirectory=/sys/class/bluetooth\nAfter=network.target dbus.service\n\n[Service]\nType=simple\nExecStartPre=-/usr/bin/podman rm -f bluetooth-service-backend\nExecStart=/usr/bin/podman run --name bluetooth-service-backend \\\n  --privileged \\\n  --net=host \\\n  --pid=host \\\n  --ipc=host \\\n  --security-opt label=disable \\\n  -v /dev:/dev \\\n  -v /sys/class/bluetooth:/sys/class/bluetooth \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /lib/modules:/lib/modules:ro \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop bluetooth-service-backend\nExecStopPost=/usr/bin/podman rm -f bluetooth-service-backend\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target",
+      "privileged": true
     }
   }
 }

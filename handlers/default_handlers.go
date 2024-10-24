@@ -149,11 +149,9 @@ func CheckAndDisableExistingService(imageName string) bool {
 		log.Printf("Failed to disable service %s: %s\n", serviceFileName, disableResult.Error)
 	}
 
-	if !cfg.Services[imageName].Privileged {
-		maskResult := utils.ExecuteCommand("systemctl", "mask", serviceFileName)
-		if maskResult.Error != "" {
-			log.Printf("Failed to mask service %s: %s\n", serviceFileName, maskResult.Error)
-		}
+	maskResult := utils.ExecuteCommand("systemctl", "mask", serviceFileName)
+	if maskResult.Error != "" {
+		log.Printf("Failed to mask service %s: %s\n", serviceFileName, maskResult.Error)
 	}
 
 	// if avahi-daemon is present in the config then mask the socket file

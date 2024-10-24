@@ -51,6 +51,11 @@
       "enabled": true,
       "unit_file": "[Unit]\nDescription=Avahi mDNS/DNS-SD Backend Container\nAfter=network-online.target\n\n[Service]\nType=simple\nRuntimeDirectory=avahi-daemon\nRuntimeDirectoryMode=0755\nKillSignal=SIGINT\nExecStartPre=-/usr/bin/podman rm -f avahi-daemon-backend-service\nExecStart=/usr/bin/podman run --name avahi-daemon-backend-service --privileged \\\n  --net=host \\\n  --volume /var/run/dbus:/var/run/dbus \\\n  --volume /run/avahi-daemon:/run/avahi-daemon \\\n  --cap-add=NET_ADMIN \\\n  --cap-add=NET_RAW \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop avahi-daemon-backend-service\nExecStopPost=/usr/bin/podman rm avahi-daemon-backend-service\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": true
+    },
+    "low-memory-monitor": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=Low Memory Monitor Container\nConditionPathExists=/proc/pressure\nAfter=sysinit.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/podman run --name low-memory-monitor-service-backend \\\n  --privileged \\\n  --pid=host \\\n  --cgroupns=host \\\n  --ipc=host \\\n  --cap-add=ALL \\\n  --security-opt=seccomp=unconfined \\\n  --security-opt=apparmor=unconfined \\\n  -v /proc/pressure:/proc/pressure \\\n  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \\\n  -v /sys/fs/cgroup:/sys/fs/cgroup \\\n  -v /dev:/dev:ro \\\n  -v /etc/low-memory-monitor.conf:/etc/low-memory-monitor.conf:ro \\\n  -e G_MESSAGES_DEBUG=all \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop low-memory-monitor-service-backend\nExecStopPost=/usr/bin/podman rm low-memory-monitor-service-backend\nRestart=on-failure\nEnvironment=\"G_MESSAGES_DEBUG=all\"\n\n# CPU Scheduling\nCPUSchedulingPolicy=fifo\nCPUSchedulingPriority=1\n\n[Install]\nWantedBy=basic.target",
+      "privileged": true
     }
   }
 }

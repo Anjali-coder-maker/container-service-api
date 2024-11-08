@@ -66,6 +66,11 @@
       "enabled": true,
       "unit_file": "[Unit]\nDescription=Samba SMB Daemon (Containerized)\nDocumentation=man:smbd(8) man:samba(7) man:smb.conf(5)\nWants=network-online.target\nAfter=network.target network-online.target\n\n[Service]\nType=notify\nPIDFile=/run/samba/smbd.pid\nLimitNOFILE=16384\nExecStart=/usr/bin/podman run --name samba-service-backend --privileged --net=host --volume /srv/samba:/srv/samba --volume /etc/samba:/etc/samba --volume /run/dbus/system_bus_socket:/run/dbus/system_bus_socket {{.ImageName}}\nExecStop=/usr/bin/podman stop samba-service-backend\nExecStopPost=/usr/bin/podman rm -f samba-service-backend\nLimitCORE=infinity\n\n[Install]\nWantedBy=multi-user.target\nAlias=smb.service",
       "privileged": true
+    },
+    "accounts-daemon": {
+      "enabled": true,
+      "unit_file": "[Unit]\nDescription=Accounts Daemon Service (Containerized)\nAfter=network.target multi-user.target nss-user-lookup.target\nWants=nss-user-lookup.target\n\n[Service]\nExecStartPre=/usr/bin/podman rm -f accounts-daemon-service-backend  # Remove any existing container\nExecStart=/usr/bin/podman run --rm --name accounts-daemon-service-backend --user 0 \\\n  --volume /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro \\\n  --volume /var/lib/AccountsService:/var/lib/AccountsService:rw \\\n  --volume /etc:/etc:rw \\\n  --volume /var/log:/var/log:rw \\\n  --volume /var/mail:/var/mail:rw \\\n  --volume /proc:/proc:ro \\\n  --pid=host \\\n  --cap-add=ALL \\\n  --network host \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop accounts-daemon-service-backend\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=graphical.target",
+      "privileged": true
     }
   }
 }

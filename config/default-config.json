@@ -49,7 +49,7 @@
     },
     "avahi-daemon": {
       "enabled": true,
-      "unit_file": "[Unit]\nDescription=Avahi mDNS/DNS-SD Backend Container\nAfter=network-online.target\n\n[Service]\nType=simple\nRuntimeDirectory=avahi-daemon\nRuntimeDirectoryMode=0755\nKillSignal=SIGINT\nExecStartPre=-/usr/bin/podman rm -f avahi-daemon-backend-service\nExecStart=/usr/bin/podman run --name avahi-daemon-backend-service --privileged \\\n  --net=host \\\n  --volume /var/run/dbus:/var/run/dbus \\\n  --volume /run/avahi-daemon:/run/avahi-daemon \\\n  --cap-add=NET_ADMIN \\\n  --cap-add=NET_RAW \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop avahi-daemon-backend-service\nExecStopPost=/usr/bin/podman rm avahi-daemon-backend-service\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=multi-user.target",
+      "unit_file": "[Unit]\nDescription=Avahi mDNS/DNS-SD Backend Container\nAfter=network-online.target\n\n[Service]\nType=simple\nRuntimeDirectory=avahi-daemon\nRuntimeDirectoryMode=0755\nKillSignal=SIGINT\nExecStartPre=-/usr/bin/podman rm -f avahi-daemon-service-backend\nExecStart=/usr/bin/podman run --name avahi-daemon-service-backend --privileged \\\n  --net=host \\\n  --volume /var/run/dbus:/var/run/dbus \\\n  --volume /run/avahi-daemon:/run/avahi-daemon \\\n  --cap-add=NET_ADMIN \\\n  --cap-add=NET_RAW \\\n  {{.ImageName}}\nExecStop=/usr/bin/podman stop avahi-daemon-service-backend\nExecStopPost=/usr/bin/podman rm avahi-daemon-service-backend\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=multi-user.target",
       "privileged": true
     },
     "low-memory-monitor": {

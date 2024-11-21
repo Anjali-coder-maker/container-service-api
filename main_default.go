@@ -28,10 +28,11 @@ func Initialize() {
 
 		// Check and disable any existing service
 		fmt.Printf("Checking and disabling any existing service: %s\n", serviceName)
-		if handlers.CheckAndDisableExistingService(serviceName) {
-			fmt.Printf("Successfully disabled existing service %s\n", serviceName)
+		err := handlers.CheckAndDisableExistingService(serviceName)
+		if err != nil {
+			fmt.Printf("Failed to disable service %s: %v\n", serviceName, err)
 		} else {
-			fmt.Printf("No existing service or failed to disable service %s\n", serviceName)
+			fmt.Printf("Successfully disabled existing service %s\n", serviceName)
 		}
 
 		// Create the unit file

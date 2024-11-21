@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
-	"log"
 	"os"
 	"runtime"
 
@@ -125,49 +124,6 @@ func CreateUnitFile(serviceName string) utils.CommandResponse {
 	}
 
 	return utils.CommandResponse{Output: "Systemd unit and D-Bus service files created, and daemon-reload successfully"}
-}
-
-// checkAndDisableExistingService checks if a service is active and disables it if necessary
-func CheckAndDisableExistingService(imageName string) bool {
-	serviceFileName := fmt.Sprintf("%s.service", imageName)
-
-	// Check if the service is active
-	checkResult := utils.ExecuteCommand("systemctl", "is-active", "--quiet", serviceFileName)
-	// if there is any error then return for that service
-	if checkResult.Error != "" {
-		return false
-	}
-
-	// Service is active, disable it
-	stopResult := utils.ExecuteCommand("systemctl", "stop", serviceFileName)
-	if stopResult.Error != "" {
-		log.Printf("Failed to stop service %s: %s\n", serviceFileName, stopResult.Error)
-	}
-
-	disableResult := utils.ExecuteCommand("systemctl", "disable", serviceFileName)
-	if disableResult.Error != "" {
-		log.Printf("Failed to disable service %s: %s\n", serviceFileName, disableResult.Error)
-	}
-
-	maskResult := utils.ExecuteCommand("systemctl", "mask", serviceFileName)
-	if maskResult.Error != "" {
-		log.Printf("Failed to mask service %s: %s\n", serviceFileName, maskResult.Error)
-	}
-
-	// if avahi-daemon is present in the config then mask the socket file
-	if serviceFileName == "avahi-daemon.service" {
-		maskResult := utils.ExecuteCommand("systemctl", "mask", "avahi-daemon.socket")
-		if maskResult.Error != "" {
-			log.Printf("Failed to mask avahi-daemon.socket: %s\n", maskResult.Error)
-		}
-	}
-
-	daemonReloadResult := utils.ExecuteCommand("systemctl", "daemon-reload")
-	if daemonReloadResult.Error != "" {
-		log.Printf("Failed to reload daemon after disabling service %s: %s\n", serviceFileName, daemonReloadResult.Error)
-	}
-
-	return true
 }
 
 // EnableAndStartService handles enabling and starting the systemd service

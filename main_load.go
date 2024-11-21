@@ -9,7 +9,6 @@ import (
 	"go-podman-api/handlers"
 	"go-podman-api/utils"
 	"os"
-	"runtime"
 	"strings"
 )
 
@@ -182,25 +181,21 @@ func applyConfigFile(filePath string) error {
 		fullServiceName := service + "-backend.service"
 
 		if enable {
-			// If the service is required to be enabled, check if the image exists
-			arch := runtime.GOARCH
-			var tag string
-
-			// Set the tag based on the architecture
-			switch arch {
-			case "arm", "arm64":
-				tag = "latest-arm"
-			default:
-				tag = "latest-amd"
-			}
-
+			// If the service is required to be enabled, check if the image exists locally
 			// Construct the full image name
-			imageName := fmt.Sprintf("docker.io/ahaosv1/%s:%s", service, tag)
+			imageName := fmt.Sprintf("docker.io/ahaosv1/%s", service)
 
 			if !isImagePresent(imageName) {
 				// Image not found, pulling the container and preparing the service
 				fmt.Printf("Image for service %s not found locally, pulling the image\n", service)
 				fmt.Println("from applyConfigFile", mergeDirPath)
+
+				// disable the service if it is already enabled
+				fmt.Println("Disabling service", fullServiceName)
+				CheckAndDisableExistingServiceerr := handlers.CheckAndDisableExistingService(service)
+				if CheckAndDisableExistingServiceerr != nil {
+					fmt.Printf("Error disabling existing service %s: %v\n", fullServiceName, CheckAndDisableExistingServiceerr)
+				}
 
 				// Pull the container in the chroot environment
 				imageName, err := handlers.PullImageChroot(service, mergeDirPath)

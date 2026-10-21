@@ -38,16 +38,26 @@ To run this application, ensure you have the following installed on your system:
    cd podman-service-manager
    ```
 
-2. Build the application:
+2. Build the applications:
+
+   The project produces two binaries from the same codebase. Each one
+   requires its own build tag, because `main.go` only calls `run()` and the
+   `run()` implementation is selected by the tag:
 
    ```bash
-   go build -o service-manager main.go
+   # Runtime CLI: --load, --update, --rollback
+   go build -tags load -o build/service-manager .
+
+   # First-install provisioning of default services
+   go build -tags default -o build/default-config-init .
    ```
+
+   Building without a tag fails with `undefined: run`.
 
 3. Run the application:
 
    ```bash
-   ./service-manager
+   ./build/service-manager
    ```
 
 ## Configuration

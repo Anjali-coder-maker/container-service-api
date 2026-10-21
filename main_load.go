@@ -37,6 +37,11 @@ func run() {
 		fmt.Fprintf(flag.CommandLine.Output(), "	  Examples:\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  		service-manager --update\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  		service-manager (services are not updated)\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  --rollback or -rollback\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "      Revert the system to the previous state using the most recent snapshot.\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "	  Examples:\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  		service-manager --rollback\n")
 	}
 
 	flag.Parse()
